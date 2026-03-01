@@ -39,9 +39,8 @@ metadata:
   name: support-kb
 spec:
   docsPath: ./docs        # directory, single file, or .zip
-  embedder:               # optional — defaults to openai/text-embedding-3-small
-    provider: openai
-    model: text-embedding-3-small
+  embedder:               # optional — defaults to system-embedder EmbeddingAgent
+    agentRef: my-embedder # name of an EmbeddingAgent in your tenant's agent registry
   chunking:
     tokenSize: 650
     overlap: 120
@@ -198,7 +197,7 @@ loom push dist/support-agent.bundle.tgz              # defaults to tag: latest
 ✓ acme/support-agent:0.1.0
 ```
 
-The org prefix is derived from your authenticated tenant's slug.
+The org prefix is your tenant's **org slug** — configurable in portal Settings, defaults to a slugified version of your tenant name.
 
 **Immutability:** Pushing a bundle with the same SHA-256 as an existing artifact is a no-op — the existing artifact is reused and the tag is updated.
 
@@ -255,9 +254,8 @@ metadata:
   name: <string>              # artifact name, used as knowledgeBaseRef in Agent specs
 spec:
   docsPath: <path>            # REQUIRED: directory | single file | .zip file
-  embedder:                   # OPTIONAL — defaults to openai/text-embedding-3-small
-    provider: <string>        # any tenant-configured provider (e.g., openai, azure)
-    model: <string>           # embedding model name
+  embedder:                   # OPTIONAL — defaults to system-embedder EmbeddingAgent
+    agentRef: <string>        # name of an EmbeddingAgent in your tenant's agent registry
   chunking:
     tokenSize: <int>          # tokens per chunk (default: 650)
     overlap: <int>            # token overlap between chunks (default: 120)
@@ -265,6 +263,33 @@ spec:
     topK: <int>               # chunks returned per similarity query (default: 8)
     citations: <bool>         # include source references in responses (default: true)
 ```
+
+### EmbeddingAgent
+
+```yaml
+apiVersion: loom.ai/v0
+kind: EmbeddingAgent
+metadata:
+  name: <string>              # agent name, used as agentRef in KnowledgeBase specs
+spec:
+  provider: <string>          # REQUIRED: embedding provider (e.g., openai, azure, cohere)
+  model: <string>             # REQUIRED: embedding model name
+  knowledgeBaseRef: <string>  # OPTIONAL: this EmbeddingAgent's own KB for meta-context
+```
+
+Create and manage EmbeddingAgents in the portal alongside regular Agents, or weave them via the CLI:
+
+```bash
+loom weave my-embedder.yaml         # → dist/my-embedder.bundle.tgz
+loom push dist/my-embedder.bundle.tgz --tag 1.0.0
+loom deploy acme/my-embedder:1.0.0 --tenant acme --env prod
+```
+
+**Embedder resolution order:**
+1. `spec.embedder.agentRef` (if specified in the KnowledgeBase YAML)
+2. Tenant's default EmbeddingAgent (if configured in portal)
+3. System `system-embedder` (configured via `SYSTEM_EMBEDDER_*` gateway env vars)
+4. Error
 
 ### Agent
 
@@ -356,6 +381,10 @@ The deployed KnowledgeBase was embedded with a different model than the one spec
 
 **`Error: docsPath not found`**  
 The path in `spec.docsPath` doesn't exist relative to the spec file. Check that the path is correct and the files are present before running `loom weave`.
+
+**`Error: No embedding provider available`**  
+**`Error: No EmbeddingAgent found`**  
+The `spec.embedder.agentRef` you specified doesn't exist, your tenant has no default EmbeddingAgent configured, and the gateway's `SYSTEM_EMBEDDER_*` env vars are not set. Options: (1) create an EmbeddingAgent in the portal and reference it via `agentRef`, (2) set a tenant default EmbeddingAgent in portal settings, or (3) ask your Loom administrator to configure `SYSTEM_EMBEDDER_PROVIDER`, `SYSTEM_EMBEDDER_MODEL`, and `SYSTEM_EMBEDDER_API_KEY` on the gateway.
 
 **Weave takes too long**  
 Large document sets will take longer. The Gateway streams progress to the CLI. For very large sets, consider splitting your KnowledgeBase into multiple smaller specs.
