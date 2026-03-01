@@ -5,13 +5,13 @@ The `loom` CLI client connects to a Loom Gateway (self-hosted or remote) to defi
 ## Installation
 
 ```bash
-npm install -g @loom/cli
+npm install -g @arachne/cli
 ```
 
 Verify the installation:
 
 ```bash
-loom --version
+arachne --version
 ```
 
 ## Quick Start: End-to-End Example
@@ -21,19 +21,19 @@ This walkthrough creates a support agent backed by a KnowledgeBase of documentat
 ### Step 1: Authenticate
 
 ```bash
-loom login https://your-loom-gateway.com
+arachne login https://your-loom-gateway.com
 # Prompts for email and password
 # ✓ Logged in as alice@acme.com (tenant: acme)
 ```
 
-Your credentials are stored in `~/.loom/config.json`.
+Your credentials are stored in `~/.arachne/config.json`.
 
 ### Step 2: Define a KnowledgeBase
 
 Create `support-kb.yaml`:
 
 ```yaml
-apiVersion: loom.ai/v0
+apiVersion: arachne.ai/v0
 kind: KnowledgeBase
 metadata:
   name: support-kb
@@ -54,7 +54,7 @@ spec:
 Create `support-agent.yaml`:
 
 ```yaml
-apiVersion: loom.ai/v0
+apiVersion: arachne.ai/v0
 kind: Agent
 metadata:
   name: support-agent
@@ -69,7 +69,7 @@ spec:
 ### Step 4: Weave both specs into bundles
 
 ```bash
-loom weave support-kb.yaml
+arachne weave support-kb.yaml
 # Uploading spec and docs to gateway...
 # Chunking 47 documents (3,821 chunks)...
 # Generating embeddings...
@@ -77,7 +77,7 @@ loom weave support-kb.yaml
 #   sha256: a3f8c2d1...
 #   VectorSpace: vs_openai_text-embedding-3-small_1536
 
-loom weave support-agent.yaml
+arachne weave support-agent.yaml
 # ✓ Bundle saved to dist/support-agent.bundle.tgz
 #   sha256: b7e4a9f2...
 ```
@@ -85,17 +85,17 @@ loom weave support-agent.yaml
 ### Step 5: Push bundles to the registry
 
 ```bash
-loom push dist/support-kb.bundle.tgz --tag 0.1.0
+arachne push dist/support-kb.bundle.tgz --tag 0.1.0
 # ✓ acme/support-kb:0.1.0
 
-loom push dist/support-agent.bundle.tgz --tag 0.1.0
+arachne push dist/support-agent.bundle.tgz --tag 0.1.0
 # ✓ acme/support-agent:0.1.0
 ```
 
 ### Step 6: Deploy the agent to a tenant
 
 ```bash
-loom deploy acme/support-agent:0.1.0 --tenant acme --env prod
+arachne deploy acme/support-agent:0.1.0 --tenant acme --env prod
 # Resolving artifact...
 # Validating VectorSpace...
 # Provisioning KB collection...
@@ -109,13 +109,13 @@ The agent is now available for inference via any API key scoped to the `support-
 
 ## Commands
 
-### `loom login [gateway-url]`
+### `arachne login [gateway-url]`
 
 Authenticate against a Loom Gateway and store credentials locally.
 
 ```bash
-loom login https://your-loom-gateway.com
-loom login                                  # prompts for gateway URL
+arachne login https://your-loom-gateway.com
+arachne login                                  # prompts for gateway URL
 ```
 
 **Options:**
@@ -125,7 +125,7 @@ loom login                                  # prompts for gateway URL
 | `--email <email>` | Email address (prompted if omitted) |
 | `--password <password>` | Password (prompted securely if omitted) |
 
-**Config file:** `~/.loom/config.json`
+**Config file:** `~/.arachne/config.json`
 
 ```json
 {
@@ -137,14 +137,14 @@ loom login                                  # prompts for gateway URL
 
 ---
 
-### `loom weave <spec-file>`
+### `arachne weave <spec-file>`
 
 Upload a YAML spec (and its documents) to the Gateway. The Gateway chunks the documents, generates embeddings, and returns a signed bundle.
 
 ```bash
-loom weave support-kb.yaml
-loom weave support-agent.yaml
-loom weave ./specs/support-kb.yaml --out ./artifacts/
+arachne weave support-kb.yaml
+arachne weave support-agent.yaml
+arachne weave ./specs/support-kb.yaml --out ./artifacts/
 ```
 
 **Options:**
@@ -174,14 +174,14 @@ dist/
 
 ---
 
-### `loom push <bundle-file>`
+### `arachne push <bundle-file>`
 
 Push a bundle file to the Gateway registry and tag it.
 
 ```bash
-loom push dist/support-kb.bundle.tgz --tag 0.1.0
-loom push dist/support-agent.bundle.tgz --tag 0.1.0
-loom push dist/support-agent.bundle.tgz              # defaults to tag: latest
+arachne push dist/support-kb.bundle.tgz --tag 0.1.0
+arachne push dist/support-agent.bundle.tgz --tag 0.1.0
+arachne push dist/support-agent.bundle.tgz              # defaults to tag: latest
 ```
 
 **Options:**
@@ -203,13 +203,13 @@ The org prefix is your tenant's **org slug** — configurable in portal Settings
 
 ---
 
-### `loom deploy <artifact:tag>`
+### `arachne deploy <artifact:tag>`
 
 Deploy an artifact from the registry to a tenant environment.
 
 ```bash
-loom deploy acme/support-agent:0.1.0 --tenant acme --env prod
-loom deploy acme/support-agent:0.1.0 --tenant staging-tenant --env staging
+arachne deploy acme/support-agent:0.1.0 --tenant acme --env prod
+arachne deploy acme/support-agent:0.1.0 --tenant staging-tenant --env staging
 ```
 
 **Options:**
@@ -248,7 +248,7 @@ Provisioning KB collection for support-kb...
 ### KnowledgeBase
 
 ```yaml
-apiVersion: loom.ai/v0
+apiVersion: arachne.ai/v0
 kind: KnowledgeBase
 metadata:
   name: <string>              # artifact name, used as knowledgeBaseRef in Agent specs
@@ -267,7 +267,7 @@ spec:
 ### EmbeddingAgent
 
 ```yaml
-apiVersion: loom.ai/v0
+apiVersion: arachne.ai/v0
 kind: EmbeddingAgent
 metadata:
   name: <string>              # agent name, used as agentRef in KnowledgeBase specs
@@ -280,9 +280,9 @@ spec:
 Create and manage EmbeddingAgents in the portal alongside regular Agents, or weave them via the CLI:
 
 ```bash
-loom weave my-embedder.yaml         # → dist/my-embedder.bundle.tgz
-loom push dist/my-embedder.bundle.tgz --tag 1.0.0
-loom deploy acme/my-embedder:1.0.0 --tenant acme --env prod
+arachne weave my-embedder.yaml         # → dist/my-embedder.bundle.tgz
+arachne push dist/my-embedder.bundle.tgz --tag 1.0.0
+arachne deploy acme/my-embedder:1.0.0 --tenant acme --env prod
 ```
 
 **Embedder resolution order:**
@@ -294,7 +294,7 @@ loom deploy acme/my-embedder:1.0.0 --tenant acme --env prod
 ### Agent
 
 ```yaml
-apiVersion: loom.ai/v0
+apiVersion: arachne.ai/v0
 kind: Agent
 metadata:
   name: <string>              # artifact name
@@ -328,7 +328,7 @@ The `vectorSpaceId` is the SHA-256 of the embedder config. Loom uses this to:
 - Refuse deployments where the KnowledgeBase and runtime embedder don't match
 - Detect when a KnowledgeBase needs to be re-woven (embedder model upgrade)
 
-**What Loom does NOT guarantee:** If you change the embedder model and re-run `loom weave`, the new bundle will have a different `vectorSpaceId`. The old deployment and the new bundle are incompatible — you must deploy the new bundle to create a new deployment.
+**What Loom does NOT guarantee:** If you change the embedder model and re-run `arachne weave`, the new bundle will have a different `vectorSpaceId`. The old deployment and the new bundle are incompatible — you must deploy the new bundle to create a new deployment.
 
 ---
 
@@ -338,9 +338,9 @@ You don't need the CLI to use the artifact system. The Loom portal provides equi
 
 | CLI Command | Portal Equivalent |
 |-------------|-------------------|
-| `loom weave <kb.yaml>` | Knowledge Bases → Upload (file/zip) |
-| `loom push <bundle.tgz>` | Knowledge Bases → Upload (auto-pushed after weave) |
-| `loom deploy <artifact:tag>` | Deployments → Provision |
+| `arachne weave <kb.yaml>` | Knowledge Bases → Upload (file/zip) |
+| `arachne push <bundle.tgz>` | Knowledge Bases → Upload (auto-pushed after weave) |
+| `arachne deploy <artifact:tag>` | Deployments → Provision |
 | _(portal only)_ | Agents → Export as YAML |
 
 The **Export as YAML** feature in the Agent Editor generates a pre-filled YAML spec from an existing portal-configured agent. Useful for moving to a CLI-based workflow.
@@ -349,18 +349,18 @@ The **Export as YAML** feature in the Agent Editor generates a pre-filled YAML s
 
 ## Configuration
 
-Config file: `~/.loom/config.json`
+Config file: `~/.arachne/config.json`
 
 | Field | Description |
 |-------|-------------|
 | `gatewayUrl` | Gateway base URL |
-| `token` | Portal JWT (stored after `loom login`) |
+| `token` | Portal JWT (stored after `arachne login`) |
 | `email` | Authenticated user's email (informational) |
 
 Override the gateway URL for a single command:
 
 ```bash
-loom weave support-kb.yaml --gateway https://staging-gateway.example.com
+arachne weave support-kb.yaml --gateway https://staging-gateway.example.com
 ```
 
 ---
@@ -368,10 +368,10 @@ loom weave support-kb.yaml --gateway https://staging-gateway.example.com
 ## Troubleshooting
 
 **`Error: Not authenticated`**  
-Run `loom login <gateway-url>` to authenticate.
+Run `arachne login <gateway-url>` to authenticate.
 
 **`Error: Token expired`**  
-Your JWT has expired. Run `loom login` again to refresh.
+Your JWT has expired. Run `arachne login` again to refresh.
 
 **`Error: Insufficient scope (required: weave:write)`**  
 Your account doesn't have the required permissions. You need the `owner` role on a tenant to use registry operations. Contact your Loom administrator.
@@ -380,7 +380,7 @@ Your account doesn't have the required permissions. You need the `owner` role on
 The deployed KnowledgeBase was embedded with a different model than the one specified in your Agent spec. Re-weave the KnowledgeBase with the matching embedder, push it, and re-deploy.
 
 **`Error: docsPath not found`**  
-The path in `spec.docsPath` doesn't exist relative to the spec file. Check that the path is correct and the files are present before running `loom weave`.
+The path in `spec.docsPath` doesn't exist relative to the spec file. Check that the path is correct and the files are present before running `arachne weave`.
 
 **`Error: No embedding provider available`**  
 **`Error: No EmbeddingAgent found`**  

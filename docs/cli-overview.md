@@ -21,7 +21,7 @@ Everything in this system revolves around three concepts:
 A collection of documents that have been chunked and embedded. The KnowledgeBase YAML spec describes _where_ the documents are and _how_ they should be processed:
 
 ```yaml
-apiVersion: loom.ai/v0
+apiVersion: arachne.ai/v0
 kind: KnowledgeBase
 metadata:
   name: support-kb
@@ -50,7 +50,7 @@ The Gateway records a **VectorSpace contract** — a fingerprint of the Embeddin
 An EmbeddingAgent is a special agent kind that wraps an embedding provider and model. It can optionally have its own KnowledgeBase for meta-context.
 
 ```yaml
-apiVersion: loom.ai/v0
+apiVersion: arachne.ai/v0
 kind: EmbeddingAgent
 metadata:
   name: my-embedder
@@ -66,7 +66,7 @@ EmbeddingAgents are managed in the portal alongside regular Agents and can be pu
 An Agent YAML spec describes a model configuration and (optionally) a KnowledgeBase reference:
 
 ```yaml
-apiVersion: loom.ai/v0
+apiVersion: arachne.ai/v0
 kind: Agent
 metadata:
   name: support-agent
@@ -79,7 +79,7 @@ spec:
 ```
 
 ### Bundle
-A bundle is the output of `loom weave` — a `.tgz` file containing:
+A bundle is the output of `arachne weave` — a `.tgz` file containing:
 - `manifest.json` — artifact metadata, SHA-256, VectorSpace contract, signature
 - `chunks/` — document chunks with their embedding vectors
 
@@ -93,19 +93,19 @@ Bundles are **immutable and content-addressed**: the same inputs always produce 
 Developer writes YAML specs
          │
          ▼
-loom weave kb.yaml           ← Gateway chunks docs, generates embeddings, signs bundle
+arachne weave kb.yaml           ← Gateway chunks docs, generates embeddings, signs bundle
          │
          ▼
 dist/support-kb.bundle.tgz   ← Immutable, content-addressed artifact
          │
          ▼
-loom push dist/support-kb.bundle.tgz --tag 0.1.0
+arachne push dist/support-kb.bundle.tgz --tag 0.1.0
          │
          ▼
 Registry stores bundle        ← org/name:0.1.0 now resolvable
          │
          ▼
-loom deploy support-agent:0.1.0 --tenant acme --env prod
+arachne deploy support-agent:0.1.0 --tenant acme --env prod
          │
          ▼
 Gateway provisions KB         ← pgvector index created for tenant
@@ -121,13 +121,13 @@ Agent is READY for inference  ← API key requests use the deployed KB
 ## Stories
 
 ### Story 1 — CLI Authentication (#55)
-**As a developer, I want to authenticate the loom CLI so that I can use CLI commands without manually managing tokens.**
+**As a developer, I want to authenticate the Arachne CLI so that I can use CLI commands without manually managing tokens.**
 
-The `loom login <gateway-url>` command prompts for email and password, calls the existing portal login endpoint, and stores the JWT in `~/.loom/config.json`. All subsequent CLI commands read from this file automatically.
+The `arachne login <gateway-url>` command prompts for email and password, calls the existing portal login endpoint, and stores the JWT in `~/.arachne/config.json`. All subsequent CLI commands read from this file automatically.
 
 The portal JWT is extended to include a `scopes[]` array. Tenant owners automatically receive registry scopes (`weave:write`, `registry:push`, `deploy:write`, `artifact:read`). A new `registryAuth.ts` middleware on the Gateway checks the required scope per endpoint.
 
-_What changes:_ New `cli/` package scaffold. Portal JWT extended. `~/.loom/config.json` config helpers.
+_What changes:_ New `cli/` package scaffold. Portal JWT extended. `~/.arachne/config.json` config helpers.
 
 ---
 
@@ -149,10 +149,10 @@ _What changes:_ `kind` field on agents model. EmbeddingAgent YAML schema. WeaveS
 
 ---
 
-### Story 3 — loom weave (#57)
-**As a developer, I want to run `loom weave` to produce a signed artifact bundle.**
+### Story 3 — arachne weave (#57)
+**As a developer, I want to run `arachne weave` to produce a signed artifact bundle.**
 
-`loom weave <spec.yaml>` uploads the spec and docs to the Gateway. The Gateway's WeaveService:
+`arachne weave <spec.yaml>` uploads the spec and docs to the Gateway. The Gateway's WeaveService:
 1. Parses the YAML
 2. Resolves docsPath (directory/zip/file)
 3. Resolves `spec.embedder.agentRef` → EmbeddingAgent → provider + model
@@ -165,14 +165,14 @@ _What changes:_ `kind` field on agents model. EmbeddingAgent YAML schema. WeaveS
 
 The CLI saves the bundle to `dist/<name>.bundle.tgz`.
 
-_What changes:_ DB migration (pgvector extension + `vector_spaces`, `kb_chunks` tables). WeaveService. `POST /v1/registry/weave` gateway route. `loom weave` CLI command.
+_What changes:_ DB migration (pgvector extension + `vector_spaces`, `kb_chunks` tables). WeaveService. `POST /v1/registry/weave` gateway route. `arachne weave` CLI command.
 
 ---
 
-### Story 4 — loom push (#58)
+### Story 4 — arachne push (#58)
 **As a developer, I want to push a bundle to the Gateway registry.**
 
-`loom push <bundle.tgz> --tag 0.1.0` stores the bundle in the database and registers the tag. Artifacts are immutable: pushing the same SHA-256 again is a no-op. The registry supports:
+`arachne push <bundle.tgz> --tag 0.1.0` stores the bundle in the database and registers the tag. Artifacts are immutable: pushing the same SHA-256 again is a no-op. The registry supports:
 - `push` — store artifact + chunks + tag
 - `pull` — download bundle by ref
 - `resolve` — look up `org/name:tag` → artifact metadata
@@ -180,14 +180,14 @@ _What changes:_ DB migration (pgvector extension + `vector_spaces`, `kb_chunks` 
 
 Artifact naming follows: `{org}/{name}:{tag}` (e.g., `acme/support-agent:0.1.0`). The `org` is derived from the authenticated tenant's org.
 
-_What changes:_ DB migration (`artifacts`, `artifact_tags` BYTEA tables). RegistryService. `POST /v1/registry/push` and `GET /v1/registry/artifacts/*` gateway routes. `loom push` CLI command.
+_What changes:_ DB migration (`artifacts`, `artifact_tags` BYTEA tables). RegistryService. `POST /v1/registry/push` and `GET /v1/registry/artifacts/*` gateway routes. `arachne push` CLI command.
 
 ---
 
-### Story 5 — loom deploy (#59)
+### Story 5 — arachne deploy (#59)
 **As a developer, I want to deploy an artifact to a tenant.**
 
-`loom deploy support-agent:0.1.0 --tenant acme --env prod`:
+`arachne deploy support-agent:0.1.0 --tenant acme --env prod`:
 1. Resolves the artifact from the registry
 2. Validates tenant permissions
 3. Verifies VectorSpace contract (refuses mismatched embedder)
@@ -196,7 +196,7 @@ _What changes:_ DB migration (`artifacts`, `artifact_tags` BYTEA tables). Regist
 6. Mints a scoped runtime JWT (valid for inference + `artifact:read` only)
 7. Marks the deployment READY
 
-_What changes:_ DB migration (`deployments` table). ProvisionService. `POST /v1/registry/deploy` gateway route. `loom deploy` CLI command.
+_What changes:_ DB migration (`deployments` table). ProvisionService. `POST /v1/registry/deploy` gateway route. `arachne deploy` CLI command.
 
 ---
 
@@ -209,7 +209,7 @@ A new **Knowledge Bases** page in the portal (between Agents and Settings in the
 - Click a KB to see its document list and per-document chunk counts
 - Delete a KB (removes artifact + chunks)
 
-The creation flow mirrors `loom weave` + `loom push` — the portal sends a multipart upload to the Gateway which runs the same WeaveService pipeline.
+The creation flow mirrors `arachne weave` + `arachne push` — the portal sends a multipart upload to the Gateway which runs the same WeaveService pipeline.
 
 _What changes:_ Portal API routes (`/v1/portal/knowledge-bases`). `KnowledgeBasesPage.tsx`. Nav item.
 
@@ -237,7 +237,7 @@ Two additions to the Agent Editor:
 
 2. **"Export as YAML" button** — downloads a pre-filled `agent.yaml`:
    ```yaml
-   apiVersion: loom.ai/v0
+   apiVersion: arachne.ai/v0
    kind: Agent
    metadata:
      name: support-agent
@@ -247,7 +247,7 @@ Two additions to the Agent Editor:
        You are SupportAgent...
      knowledgeBaseRef: support-kb
    ```
-   The developer can take this file, run `loom weave agent.yaml`, and produce a versioned bundle.
+   The developer can take this file, run `arachne weave agent.yaml`, and produce a versioned bundle.
 
 _What changes:_ Extend `PUT /v1/portal/agents/:id` with `knowledgeBaseRef`. `GET /v1/portal/agents/:id/export` route. AgentEditor KB selector + Export button.
 
@@ -271,10 +271,10 @@ _What changes:_ Inference-time RAG in `src/agent.ts`. Query embedding via KB's E
 
 ---
 
-### Story 11 — loom weave for EmbeddingAgents (new)
+### Story 11 — arachne weave for EmbeddingAgents (new)
 **As a developer, I want to weave an EmbeddingAgent spec so that I can register custom embedding configurations in the gateway registry.**
 
-`loom weave embedding-agent.yaml` produces a bundle for a `kind: EmbeddingAgent`. EmbeddingAgent bundles contain the provider/model config. They can be pushed and deployed like any other artifact. Portal shows EmbeddingAgents in the Agents page with an "Embedding" badge.
+`arachne weave embedding-agent.yaml` produces a bundle for a `kind: EmbeddingAgent`. EmbeddingAgent bundles contain the provider/model config. They can be pushed and deployed like any other artifact. Portal shows EmbeddingAgents in the Agents page with an "Embedding" badge.
 
 _What changes:_ WeaveService handles `kind: EmbeddingAgent` (config-only, no chunking). Registry stores EmbeddingAgent artifacts. Deploy wires EmbeddingAgent config to tenant. Portal EmbeddingAgent display.
 
@@ -324,15 +324,15 @@ The portal JWT is extended with a `scopes: string[]` field and `orgSlug` claim. 
 
 A new `registryAuth(scope)` middleware factory checks the presence of the required scope in the JWT and returns 403 if missing.
 
-CLI commands (`loom weave`, `loom push`, `loom deploy`) use the stored portal JWT from `~/.loom/config.json`.
+CLI commands (`arachne weave`, `arachne push`, `arachne deploy`) use the stored portal JWT from `~/.arachne/config.json`.
 
 ---
 
 ## Success Criteria (from PRD + additions)
 
 - [ ] Developer can define KB + Agent in under 20 lines of YAML ✓
-- [ ] `loom weave` completes under 10s for small doc sets
-- [ ] `loom deploy` completes under 5s
+- [ ] `arachne weave` completes under 10s for small doc sets
+- [ ] `arachne deploy` completes under 5s
 - [ ] Same bundle deploys identically across environments (VectorSpace guarantee)
 - [ ] Multi-tenant isolation enforced (all artifacts + deployments scoped to tenant org_slug)
 - [ ] No embedding occurs at deploy time (embeddings are in the bundle, not recomputed)
