@@ -507,3 +507,28 @@
 - Resolve alias (@/shared) working correctly across portal and shared module boundaries
 - All 89 tests integrated and passing in the suite
 
+
+---
+
+### 2026-06-XX: P0 Coverage Push — RAG, Registry, EmbeddingAgent, Slug
+
+**Task:** Bring coverage to 80%+ for completely untested P0 modules.
+
+**Results:**
+- **tests/rag-retrieval.test.ts:** 12 tests — `retrieveChunks` (happy path, empty results, pgvector literal format, agentRef passthrough, embedder failure, API error) + `buildRagContext` (empty, citations, source annotation, special chars, multi-chunk ranking)
+- **tests/registry-routes.test.ts:** 32 tests — full HTTP layer coverage for all 6 registry routes (`push`, `list`, `pull`, `delete`, `deploy`, `deployments`). Auth: 401 (missing token) and 403 (wrong scope) on all routes. Multipart upload tested with a manual boundary builder.
+- **tests/embedding-agent-service.test.ts:** 20 tests — `resolveEmbedder` (named agent, env fallback, 6 error cases, explicit dimensions), `bootstrapSystemEmbedder` (5 cases: skip, create, update, idempotent, tenant-not-found), `dimensionsForModel` (4 known/unknown models via resolveEmbedder)
+- **tests/utils.test.ts:** 16 tests — `generateOrgSlug` (8 cases) + `validateOrgSlug` (8 cases incl. boundary lengths)
+- **Total New Tests:** 80
+- **Suite Total:** 634 tests passing ✅ (up from 549)
+
+**Key Patterns Used:**
+- `vi.hoisted()` + `vi.mock()` for constructor-level service mocking in route tests
+- Manual multipart body builder for `@fastify/multipart` in registry push tests
+- Real JWT tokens with `signJwt` to test actual `registryAuth` middleware (no mock bypass)
+- `global.fetch` replaced with `vi.fn()` for embedding API in RAG retrieval tests
+- `process.env.*` set/deleted in `afterEach` for EmbeddingAgentService env-var tests
+- `dimensionsForModel` is unexported — tested indirectly through `resolveEmbedder` return value
+- `validateOrgSlug` returns `{ valid: boolean; error?: string }` — tests check `.valid` property
+
+**Coverage gaps documented in:** `.squad/decisions/inbox/hockney-coverage-gaps.md`

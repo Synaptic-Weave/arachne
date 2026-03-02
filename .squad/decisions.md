@@ -2169,3 +2169,26 @@ New tables:
 - Multi-tenant isolation for registry routes: delegated to `RegistryService` (fully tested separately); no additional test needed
 
 **Impact:** Team understands why certain paths are not tested; recommendations for future test additions guide coverage expansion
+
+## 2026-02-27: README Repositioning & Developer Docs Split
+
+**By:** Edie (Technical Writer)  
+**Date:** 2026-02-27
+
+**What:** Restructured documentation to position Arachne as an **AI runtime + developer toolchain + portable spec**. Rewrote README from 239 lines (mixing product and impl details) to ~55 lines (clean positioning). Extracted all implementation details—database schema, API internals, stack, source layout—into new `docs/developer-guide.md`.
+
+**Changes:**
+- README.md (rewritten): ~55 lines, leading with identity trinity; kept "What You Can Build", "Core Capabilities", getting started, CLI overview, docs index; dropped schema, source files, stack tables
+- docs/developer-guide.md (new): Absorbs architecture overview, key source files, API extensions, stack, full database schema (12 tables)
+- docs/architecture.md (updated): Added "Further Reading" section linking to developer-guide, CLI overview, registry API
+
+**Decisions:**
+1. Keep "Core Capabilities" table (runtime features are core positioning)
+2. Keep links to all existing docs (CLI, RAG, Portal, Registry, etc.)
+3. Ollama explicitly mentioned in provider list
+4. Database schema stays **verbatim** in developer guide (no compression)
+5. No new docs created—restructuring only
+
+**Why:** README is a product homepage for repo visitors, not an API reference. Developers should understand what Arachne does immediately; implementation details belong in a dedicated developer guide indexed from architecture.
+
+**Impact:** Clearer positioning; reduced cognitive load (~55-line README vs ~240); implementation details discoverable but not blocking first-time users

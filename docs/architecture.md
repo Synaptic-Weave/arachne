@@ -617,3 +617,13 @@ npm run build && npm start
 3. **Single process for Phase 1** — Gateway, dashboard API, portal API, and admin API all share one Fastify instance. Service split is deferred to Phase 2.
 4. **Two persistence paths** — Legacy services use raw SQL (battle-tested); domain services use MikroORM (clean architecture). Migration in progress.
 5. **Provider-agnostic** — Abstract `BaseProvider` interface; tenant config determines routing. Adding a provider means one new adapter class.
+
+---
+
+## Further Reading
+
+| Doc | What's in it |
+|---|---|
+| [Developer Guide](developer-guide.md) | Source layout, database schema, API extensions |
+| [CLI Overview](cli-overview.md) | Artifact model, weave pipeline, registry, deployment |
+| [Registry API](registry-api.md) | HTTP API for the artifact registry |

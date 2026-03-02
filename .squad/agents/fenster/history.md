@@ -1616,3 +1616,28 @@ const t = Object.assign(Object.create(Tenant.prototype) as Tenant, {
 - `runtimeToken` excluded from portal responses
 - `searchReady: chunkCount > 0` convenience flag on KB detail
 - `authRequired` (not `ownerRequired`) — consistent with trace/analytics routes
+
+### 2026-03-02: Docker Stack Setup
+
+**What:** Created full-stack Docker Compose configuration for local development.
+
+**Files created:**
+- `Dockerfile` — multi-stage gateway build (Node 20 Alpine, TypeScript → dist/)
+- `Dockerfile.portal` — multi-stage portal build (Vite → nginx:alpine with reverse proxy)
+- `nginx.portal.conf` — nginx config proxying `/v1` to gateway, SPA routing fallback
+- `docker-compose.yml` — 4 services: postgres, ollama, gateway, portal
+
+**Key decisions:**
+- Gateway runtime includes `migrations/` directory (node-pg-migrate runs at startup)
+- Portal nginx proxies `/v1` to `http://gateway:3000` for API calls
+- Ollama service with persistent volume (`ollama_data`)
+- Gateway healthcheck uses `curl -f http://localhost:3000/health`
+- All dev secrets commented with `# DEV ONLY — change for production`
+- `ENCRYPTION_MASTER_KEY` placeholder: 64-char hex string (required or gateway exits)
+- System embedder env vars point to ollama service (`SYSTEM_EMBEDDER_PROVIDER=ollama`)
+- Portal on port 5174, gateway on 3000, postgres on 5432, ollama on 11434
+
+**Impact:** `docker compose up` now brings up full local stack with hot-reload support via bind mounts (if added).
+
+## Learnings
+
