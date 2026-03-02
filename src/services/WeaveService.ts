@@ -10,7 +10,7 @@ const inflateRawAsync = promisify(inflateRaw) as (buf: Buffer) => Promise<Buffer
 // ─── Spec Interfaces ─────────────────────────────────────────────────────────
 
 export interface KnowledgeBaseSpec {
-  apiVersion: 'arachne.ai/v0';
+  apiVersion: 'arachne-ai.com/v0';
   kind: 'KnowledgeBase';
   metadata: { name: string };
   spec: {
@@ -22,7 +22,7 @@ export interface KnowledgeBaseSpec {
 }
 
 export interface EmbeddingAgentSpec {
-  apiVersion: 'arachne.ai/v0';
+  apiVersion: 'arachne-ai.com/v0';
   kind: 'EmbeddingAgent';
   metadata: { name: string };
   spec: {
@@ -33,7 +33,7 @@ export interface EmbeddingAgentSpec {
 }
 
 export interface AgentSpec {
-  apiVersion: 'arachne.ai/v0';
+  apiVersion: 'arachne-ai.com/v0';
   kind: 'Agent';
   metadata: { name: string };
   spec: {
@@ -223,8 +223,8 @@ export class WeaveService {
       spec?: unknown;
     };
 
-    if (raw.apiVersion !== 'arachne.ai/v0') {
-      throw new Error(`Invalid apiVersion: ${raw.apiVersion}. Expected "arachne.ai/v0"`);
+    if (raw.apiVersion !== 'arachne-ai.com/v0') {
+      throw new Error(`Invalid apiVersion: ${raw.apiVersion}. Expected "arachne-ai.com/v0"`);
     }
 
     const kind = raw.kind;

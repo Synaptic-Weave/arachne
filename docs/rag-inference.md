@@ -164,7 +164,7 @@ The agent's next request will automatically retrieve and inject RAG context.
 Define an agent YAML with a `knowledgeBaseRef`:
 
 ```yaml
-apiVersion: arachne.ai/v0
+apiVersion: arachne-ai.com/v0
 kind: Agent
 metadata:
   name: my-agent

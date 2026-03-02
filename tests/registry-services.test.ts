@@ -91,7 +91,7 @@ describe('WeaveService', () => {
     it('returns correct kind + metadata for a KnowledgeBase YAML', async () => {
       const { readFile } = await import('node:fs/promises');
       vi.mocked(readFile).mockResolvedValue(`
-apiVersion: arachne.ai/v0
+apiVersion: arachne-ai.com/v0
 kind: KnowledgeBase
 metadata:
   name: my-docs
@@ -102,13 +102,13 @@ spec:
       const spec = await svc.parseSpec('/fake/kb.yaml');
       expect(spec.kind).toBe('KnowledgeBase');
       expect(spec.metadata.name).toBe('my-docs');
-      expect(spec.apiVersion).toBe('arachne.ai/v0');
+      expect(spec.apiVersion).toBe('arachne-ai.com/v0');
     });
 
     it('returns correct kind + metadata for an Agent YAML', async () => {
       const { readFile } = await import('node:fs/promises');
       vi.mocked(readFile).mockResolvedValue(`
-apiVersion: arachne.ai/v0
+apiVersion: arachne-ai.com/v0
 kind: Agent
 metadata:
   name: my-agent

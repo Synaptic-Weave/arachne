@@ -21,7 +21,7 @@ Everything in this system revolves around three concepts:
 A collection of documents that have been chunked and embedded. The KnowledgeBase YAML spec describes _where_ the documents are and _how_ they should be processed:
 
 ```yaml
-apiVersion: arachne.ai/v0
+apiVersion: arachne-ai.com/v0
 kind: KnowledgeBase
 metadata:
   name: support-kb
@@ -50,7 +50,7 @@ The Gateway records a **VectorSpace contract** — a fingerprint of the Embeddin
 An EmbeddingAgent is a special agent kind that wraps an embedding provider and model. It can optionally have its own KnowledgeBase for meta-context.
 
 ```yaml
-apiVersion: arachne.ai/v0
+apiVersion: arachne-ai.com/v0
 kind: EmbeddingAgent
 metadata:
   name: my-embedder
@@ -66,7 +66,7 @@ EmbeddingAgents are managed in the portal alongside regular Agents and can be pu
 An Agent YAML spec describes a model configuration and (optionally) a KnowledgeBase reference:
 
 ```yaml
-apiVersion: arachne.ai/v0
+apiVersion: arachne-ai.com/v0
 kind: Agent
 metadata:
   name: support-agent
@@ -237,7 +237,7 @@ Two additions to the Agent Editor:
 
 2. **"Export as YAML" button** — downloads a pre-filled `agent.yaml`:
    ```yaml
-   apiVersion: arachne.ai/v0
+   apiVersion: arachne-ai.com/v0
    kind: Agent
    metadata:
      name: support-agent

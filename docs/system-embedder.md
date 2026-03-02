@@ -235,7 +235,7 @@ export SYSTEM_EMBEDDER_API_KEY=sk-...
 In a future release, you can define custom embedding agents:
 
 ```yaml
-apiVersion: arachne.ai/v0
+apiVersion: arachne-ai.com/v0
 kind: EmbeddingAgent
 metadata:
   name: my-embedder
@@ -248,7 +248,7 @@ spec:
 Then reference it in KnowledgeBases or Agents:
 
 ```yaml
-apiVersion: arachne.ai/v0
+apiVersion: arachne-ai.com/v0
 kind: KnowledgeBase
 metadata:
   name: my-kb

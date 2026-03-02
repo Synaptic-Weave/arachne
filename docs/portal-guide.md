@@ -1,6 +1,6 @@
 # Portal User Guide
 
-The Arachne Portal is a web-based dashboard for managing agents, knowledge bases, API keys, conversations, and analytics. Access it at `https://api.arachne.ai` after logging in.
+The Arachne Portal is a web-based dashboard for managing agents, knowledge bases, API keys, conversations, and analytics. Access it at `https://api.arachne-ai.com` after logging in.
 
 ## Dashboard Overview
 
@@ -39,7 +39,7 @@ Knowledge bases are created using the Arachne CLI, not the portal:
 ```bash
 # 1. Define a YAML spec
 cat > my-kb.yaml <<EOF
-apiVersion: arachne.ai/v0
+apiVersion: arachne-ai.com/v0
 kind: KnowledgeBase
 metadata:
   name: my-kb
@@ -169,7 +169,7 @@ To remove a KB, click the **Clear** button and save.
 The **Export YAML** button at the top of the editor downloads the agent configuration as an Arachne YAML spec:
 
 ```yaml
-apiVersion: arachne.ai/v0
+apiVersion: arachne-ai.com/v0
 kind: Agent
 metadata:
   name: my-agent
@@ -342,4 +342,4 @@ Click the **Revoke** button. The key becomes invalid immediately for all future 
 
 - **Docs**: See [docs/](../docs/) for CLI reference, architecture, and troubleshooting
 - **Traces**: View encrypted request/response traces per agent in the **Traces** tab (admin users only)
-- **Feedback**: Report issues or request features via email to support@arachne.ai
+- **Feedback**: Report issues or request features via email to support@arachne-ai.com

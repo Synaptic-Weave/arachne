@@ -28,7 +28,7 @@ All Registry API endpoints require a JWT token scoped with Registry capabilities
 Scopes are embedded in the JWT token claims under the `scopes` field. The token is passed as:
 
 ```bash
-curl -H "Authorization: Bearer <REGISTRY_JWT>" https://api.arachne.ai/v1/registry/...
+curl -H "Authorization: Bearer <REGISTRY_JWT>" https://api.arachne-ai.com/v1/registry/...
 ```
 
 ## Artifact Naming Convention
@@ -129,7 +129,7 @@ Publish a new artifact version or overwrite an existing tag.
 **Example:**
 
 ```bash
-curl -X POST https://api.arachne.ai/v1/registry/push \
+curl -X POST https://api.arachne-ai.com/v1/registry/push \
   -H "Authorization: Bearer $REGISTRY_JWT" \
   -F "bundle=@my-kb.tgz" \
   -F "name=my-kb" \
@@ -182,7 +182,7 @@ Download a specific artifact bundle.
 
 ```bash
 curl -H "Authorization: Bearer $REGISTRY_JWT" \
-  https://api.arachne.ai/v1/registry/pull/acme-corp/my-kb/v1.0 \
+  https://api.arachne-ai.com/v1/registry/pull/acme-corp/my-kb/v1.0 \
   -o my-kb.tgz
 ```
 
@@ -207,7 +207,7 @@ Remove a specific artifact version. If no other tags point to this artifact, the
 ```bash
 curl -X DELETE \
   -H "Authorization: Bearer $REGISTRY_JWT" \
-  https://api.arachne.ai/v1/registry/acme-corp/my-kb/v0.9
+  https://api.arachne-ai.com/v1/registry/acme-corp/my-kb/v0.9
 ```
 
 ## Deployments

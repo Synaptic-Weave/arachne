@@ -33,7 +33,7 @@ Your credentials are stored in `~/.arachne/config.json`.
 Create `support-kb.yaml`:
 
 ```yaml
-apiVersion: arachne.ai/v0
+apiVersion: arachne-ai.com/v0
 kind: KnowledgeBase
 metadata:
   name: support-kb
@@ -54,7 +54,7 @@ spec:
 Create `support-agent.yaml`:
 
 ```yaml
-apiVersion: arachne.ai/v0
+apiVersion: arachne-ai.com/v0
 kind: Agent
 metadata:
   name: support-agent
@@ -248,7 +248,7 @@ Provisioning KB collection for support-kb...
 ### KnowledgeBase
 
 ```yaml
-apiVersion: arachne.ai/v0
+apiVersion: arachne-ai.com/v0
 kind: KnowledgeBase
 metadata:
   name: <string>              # artifact name, used as knowledgeBaseRef in Agent specs
@@ -267,7 +267,7 @@ spec:
 ### EmbeddingAgent
 
 ```yaml
-apiVersion: arachne.ai/v0
+apiVersion: arachne-ai.com/v0
 kind: EmbeddingAgent
 metadata:
   name: <string>              # agent name, used as agentRef in KnowledgeBase specs
@@ -294,7 +294,7 @@ arachne deploy acme/my-embedder:1.0.0 --tenant acme --env prod
 ### Agent
 
 ```yaml
-apiVersion: arachne.ai/v0
+apiVersion: arachne-ai.com/v0
 kind: Agent
 metadata:
   name: <string>              # artifact name
