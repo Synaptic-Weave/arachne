@@ -916,3 +916,36 @@ Used `adminMode?: boolean` prop pattern instead of passing full URLs/header fact
 - Config stored at `~/.arachne/config.json`; env vars `ARACHNE_GATEWAY_URL` and `ARACHNE_TOKEN` take priority over stored config
 - ESM-first (`"type": "module"`) consistent with root package
 - All command actions async-ready for future implementation
+
+### 2026-03-01: CLI Commands — login, weave, push, deploy
+
+**What:** Fully implemented all four `arachne` CLI commands (previously stubs) plus a zip helper.
+
+**Files created/updated:**
+- `cli/src/commands/login.ts` — interactive login: prompts gateway URL + API token, writes to `~/.arachne/config.json`, validates connection
+- `cli/src/commands/weave.ts` — calls gateway `/v1/registry/weave` (or local WeaveService path); streams YAML spec + docs, writes `.tgz` output
+- `cli/src/commands/push.ts` — multipart upload of `.tgz` bundle to `/v1/registry/push`; supports `--tag` override; prints resulting `org/name:tag` ref
+- `cli/src/commands/deploy.ts` — POST to `/v1/registry/deploy` with artifact ref + `--tenant` + `--env`; prints deployment ID and runtime token
+- `cli/src/lib/zip.ts` — helper for zip extraction used by weave command
+
+**Key decisions:**
+- Commands use `getGatewayUrl()` / `getToken()` from `config.ts` (env var priority over stored config)
+- Multipart upload via `form-data` package (already a dependency from scaffold)
+- Errors surface with `console.error` + `process.exit(1)` (CLI convention)
+
+### 2026-03-01: Portal UI — Knowledge Bases, Deployments, AgentEditor KB selector + Export YAML
+
+**What:** Added full registry-facing UI to the tenant portal.
+
+**Files created:**
+- `portal/src/pages/KnowledgeBasesPage.tsx` — table of KB artifacts with chunk count, `searchReady` badge, delete action; links to deployment flow
+- `portal/src/pages/DeploymentsPage.tsx` — table of deployments with status, environment, artifact ref; unprovision action with confirmation modal
+
+**Files modified:**
+- `portal/src/pages/AgentEditor.tsx` — added KB selector dropdown (fetches `/v1/portal/knowledge-bases`; sets `knowledgeBaseRef` on agent); added "Export YAML" button that downloads agent config as `arachne` spec YAML
+- `portal/src/components/AppLayout.tsx` — added nav items for Knowledge Bases and Deployments
+
+**Key decisions:**
+- KB selector only shown when at least one KB exists (avoids empty-state confusion)
+- Export YAML generates a client-side blob download — no new API endpoint needed
+- Deployments page re-uses existing `authRequired` pattern; optimistic delete with rollback on error

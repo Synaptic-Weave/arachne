@@ -1514,3 +1514,105 @@ const t = Object.assign(Object.create(Tenant.prototype) as Tenant, {
 - Iterate `request.parts()` with `for await` — accumulate file chunks into `Buffer.concat()`
 - Route registration uses same `fastify.register((instance, opts, done) => { ... done(); })` wrapper as other route files
 - Passed `orm` (not `orm.em`) to `registerRegistryRoutes` so each handler can call `orm.em.fork()` safely
+
+### 2026-03-01: Registry Auth Middleware + JWT Scope Extension
+
+**What:** Added scope-based auth layer for registry routes.
+- Created `src/auth/registryScopes.ts` — `REGISTRY_SCOPES` constants and `TENANT_OWNER_SCOPES` array
+- Extended `src/auth/jwtUtils.ts` — `JwtPayload` interface with `scopes?: string[]` and `orgSlug?: string | null`
+- Created `src/middleware/registryAuth.ts` — Fastify preHandler factory for scope-based authorization
+- Updated `UserManagementService` — all four `signJwt` calls now embed `scopes` and `orgSlug: null`
+
+**Key decisions:**
+- `registryAuth(requiredScope, secret)` takes explicit secret (matches existing `createBearerAuth` pattern)
+- Owner → `TENANT_OWNER_SCOPES`, member → `[]` — role-based at token-mint time
+- `orgSlug: null` placeholder until `org_slug` migration lands; no breakage (nullable)
+- Backward-compatible: payload additive only
+
+### 2026-03-01: WeaveService — Chunk/Embed/Sign Pipeline
+
+**What:** Created `src/services/WeaveService.ts` — the `arachne weave` backend pipeline.
+
+**Methods:**
+- `parseSpec(yamlPath)` — parse + validate YAML spec → typed `AnySpec`
+- `resolveDocs(docsPath)` — resolve docs from dir/.zip/single file
+- `chunkText(text, tokenSize, overlap)` — word-aligned sliding-window chunker
+- `embedTexts(texts, provider, model, apiKey)` — OpenAI embeddings, batched at 100/req
+- `computePreprocessingHash(config)` — SHA-256 of chunking+model config
+- `packageBundle(spec, chunks, vectorSpace)` — `.tgz` with HMAC-SHA256 signature
+- `weaveKnowledgeBase(yamlPath, outputDir, tenantId, em?)` — full KB pipeline
+- `weaveConfigArtifact(yamlPath, outputDir)` — config-only bundle for Agent/EmbeddingAgent
+
+**Key decisions:**
+- No new npm deps — custom YAML parser, custom POSIX ustar tar builder, custom ZIP extractor, native `fetch`
+- P0: always uses `SYSTEM_EMBEDDER_PROVIDER/MODEL/API_KEY` env vars (DB-based agent resolution deferred)
+- Only OpenAI supported for P0
+
+### 2026-03-01: RegistryService
+
+**What:** Created `src/services/RegistryService.ts` — push/resolve/list/pull/delete for content-addressed artifacts.
+
+**Key decisions:**
+- sha256 idempotency: duplicate push returns existing artifact + re-upserts tag (no exception)
+- `version` = tag name (e.g., `latest`, `1.0.0`)
+- `ArtifactTag` upsert: `_upsertTag` moves pointer atomically on re-push
+- `VectorSpace` only created for `KnowledgeBase` kind
+- Chunk deletion before artifact (FK safety with MikroORM UoW)
+- Tenant scope guard in `resolve()` handles both hydrated entity and raw string ID
+
+### 2026-03-01: ProvisionService
+
+**What:** Created `src/services/ProvisionService.ts` — deploy/unprovision/listDeployments.
+
+**Key decisions:**
+- `RUNTIME_JWT_SECRET` → `PORTAL_JWT_SECRET` fallback (avoids hard boot failure in dev)
+- `ONE_YEAR_MS` runtime tokens (long-lived by design)
+- `randomUUID()` returned as `deploymentId` when artifact not found (interface compliance, not persisted)
+- KB validation: `em.count(KbChunk)` for live count (not stale `artifact.chunkCount`)
+- `unprovision`: `markFailed('Unprovisioned')` then explicitly null `runtimeToken`
+- `RegistryService` injected via constructor default (no DI container for P0)
+
+### 2026-03-01: EmbeddingAgentService + System-Embedder Bootstrap
+
+**What:** Created `src/services/EmbeddingAgentService.ts`.
+
+**Key decisions:**
+- Config stored in `systemPrompt` as JSON — no new DB columns needed
+- `resolveEmbedder()` resolution order: named agentRef → DB lookup → env var fallback → throw
+- `bootstrapSystemEmbedder()`: upsert with diff-check (only flush if config changed)
+- Startup hook uses `orm.em.fork()` (separate from main request EM)
+- Fixed pre-existing build failure: `Agent.schema.ts` missing `kind`; `ApiKey.schema.ts` missing `rawKey`
+
+### 2026-03-01: Tenant org_slug
+
+**What:** Added org slug support end-to-end.
+- Created `src/utils/slug.ts` — `generateOrgSlug(name)` and `validateOrgSlug(slug)`
+- `Tenant.ts` + `Tenant.schema.ts` — `orgSlug?: string | null` → `org_slug varchar(100)` column
+- `tenant.dto.ts` — `orgSlug` in `UpdateTenantDto`
+- `TenantManagementService` — `updateSettings` handles `orgSlug`; `findByOrgSlug(slug)` helper
+- `UserManagementService` — `assignUniqueSlug()` called on `createUser` and `acceptInvite`; all four JWT sign calls include `orgSlug`
+- `portal.ts` — `PATCH /v1/portal/settings` extended with optional `orgSlug`
+
+**Key decisions:**
+- `provider` made optional in PATCH settings (avoids duplicate route registration)
+- Creation collision: append `-2`, `-3`; PATCH collision: 409 (let client choose)
+- `assignUniqueSlug` runs before `em.flush()` (new tenant not yet visible in DB)
+
+### 2026-03-01: Portal KB + Deployment Routes
+
+**What:** Added 6 routes to `src/routes/portal.ts`.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/v1/portal/knowledge-bases` | List KB artifacts for tenant |
+| GET | `/v1/portal/knowledge-bases/:id` | KB detail + live chunk count |
+| DELETE | `/v1/portal/knowledge-bases/:id` | Delete KB + all chunks |
+| GET | `/v1/portal/deployments` | List deployments with artifact info |
+| GET | `/v1/portal/deployments/:id` | Single deployment detail |
+| DELETE | `/v1/portal/deployments/:id` | Unprovision deployment |
+
+**Key decisions:**
+- `orm.em.fork()` per handler — no changes to `registerPortalRoutes` signature
+- `runtimeToken` excluded from portal responses
+- `searchReady: chunkCount > 0` convenience flag on KB detail
+- `authRequired` (not `ownerRequired`) — consistent with trace/analytics routes

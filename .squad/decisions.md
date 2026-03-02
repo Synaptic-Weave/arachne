@@ -2006,3 +2006,95 @@ New tables:
 - Finance teams attribute embedding costs per tenant/KB
 - Product teams measure KB adoption and request patterns
 - SRE detects embedding provider degradation via alerts
+
+---
+
+## 2026-03-01: Arachne Rebrand — User Directive
+
+**By:** Michael Brown (via Copilot)
+**What:** The platform is being rebranded from "Loom" to "Arachne". The CLI binary and all platform naming should reflect this: `loom` CLI → `arachne` CLI, `@loom/cli` → `@arachne/cli`, `loom.ai/v0` apiVersion → `arachne.ai/v0`, platform branding throughout docs.
+**Why:** User request — captured for team memory.
+
+## 2026-03-01: Arachne Rebrand — Implementation
+
+**By:** Fenster (Backend Dev)
+**What:** Rebranded all user-facing product name references from "Loom" to "Arachne" across 21 files. Scope: package.json, src/ comments, portal UI strings, dashboard UI strings, tests, README, RUNNING_LOCALLY.md. Variable/function names (`loomConfig`, etc.) intentionally left untouched.
+**Key files:** `package.json`, `src/index.ts` (X-Loom → X-Arachne header), `portal/src/` (AppLayout, LoginPage, SignupPage, LandingPage, TracesPage, ApiKeysPage), `dashboard/src/` (Layout, ApiKeyPrompt), `README.md`, `RUNNING_LOCALLY.md`.
+
+## 2026-03-01: Registry/KB Database Migration
+
+**By:** Fenster (Backend Dev)
+**What:** Created `migrations/1000000000015_registry.cjs` — adds pgvector extension, `tenants.org_slug`, `agents.kind`, and 6 new tables: `vector_spaces`, `artifacts`, `artifact_tags`, `kb_chunks` (pgvector 1536-dim + ivfflat index), `deployments`, `embedding_operations`, `artifact_operations`. Also adds 13 RAG-specific columns to `traces`.
+**Decisions:** `org_slug` is nullable (backfill deferred); `kb_chunks.embedding` is `vector(1536)` (text-embedding-3-small); ivfflat `lists=100`; `deployments.runtime_token` stored plain TEXT.
+
+## 2026-03-01: Registry Auth Middleware + JWT Scope Extension
+
+**By:** Fenster (Backend Dev)
+**What:** Created `src/auth/registryScopes.ts` (scope constants), extended `src/auth/jwtUtils.ts` with `JwtPayload` interface (`scopes`, `orgSlug`), created `src/middleware/registryAuth.ts` (scope-based Fastify preHandler factory), updated `UserManagementService` — all four `signJwt` calls now embed scopes.
+**Decisions:** `registryAuth(requiredScope, secret)` takes explicit secret (matches `createBearerAuth` pattern); owner → `TENANT_OWNER_SCOPES`, member → `[]`; `orgSlug: null` until column migration lands. Backward-compatible (additive payload only).
+
+## 2026-03-01: Registry/KB Domain Entities
+
+**By:** Verbal (Domain Model)
+**What:** Created five new domain entities using Peter Coad's Color Modeling archetypes — `Artifact` (🟢 Thing), `VectorSpace` (🔵 Catalog-Entry), `KbChunk` (🟢 Thing), `Deployment` (🩷 Moment-Interval), `ArtifactTag` (🔵 Catalog-Entry). Extended `Agent` with `kind: 'inference' | 'embedding'`. `KbChunk.embedding` typed as `number[] | null` with raw SQL for pgvector.
+
+## 2026-03-01: WeaveService — Chunk/Embed/Sign Pipeline
+
+**By:** Fenster (Backend Dev)
+**What:** Created `src/services/WeaveService.ts` — full KB pipeline (parse YAML spec, resolve docs, chunk text, embed via OpenAI, compute preprocessing hash, package `.tgz` with HMAC-SHA256). Also handles config-only bundles for Agent/EmbeddingAgent artifacts.
+**Decisions:** No new npm deps — custom YAML parser, custom POSIX ustar tar builder, custom ZIP extractor; native `fetch` for embeddings. P0 always uses `SYSTEM_EMBEDDER_*` env vars (DB-based agent resolution deferred). Only OpenAI for P0.
+
+## 2026-03-01: RegistryService
+
+**By:** Fenster (Backend Dev)
+**What:** Created `src/services/RegistryService.ts` — push/resolve/list/pull/delete for content-addressed artifacts. `push()` is idempotent (duplicate sha256 re-upserts tag). `ArtifactTag` upsert pattern moves tag pointer atomically. `VectorSpace` created only for KnowledgeBase kind.
+**Decisions:** `version` = tag name; sha256 idempotency (no error on duplicate); chunk deletion before artifact (FK safety); tenant scope guard in `resolve()` handles both hydrated and raw entity ref.
+
+## 2026-03-01: ProvisionService
+
+**By:** Fenster (Backend Dev)
+**What:** Created `src/services/ProvisionService.ts` — deploy/unprovision/listDeployments. Validates artifact exists and KB has chunks, mints scoped runtime JWT, stores token in `Deployment.runtimeToken`.
+**Decisions:** `RUNTIME_JWT_SECRET` with `PORTAL_JWT_SECRET` fallback; runtime tokens are 1-year by design; `randomUUID()` returned as `deploymentId` on early-exit (no persisted row); KB validation uses live `em.count(KbChunk)` not stale `chunkCount`; `unprovision` calls `markFailed('Unprovisioned')` then explicitly nulls `runtimeToken`.
+
+## 2026-03-01: EmbeddingAgentService + System-Embedder Bootstrap
+
+**By:** Fenster (Backend Dev)
+**What:** Created `src/services/EmbeddingAgentService.ts` — `resolveEmbedder()` (named agentRef → DB lookup, else env var fallback) and `bootstrapSystemEmbedder()` (upsert system-wide default embedder on gateway startup). Config stored as JSON in existing `systemPrompt` column. Fixed pre-existing `Agent.schema.ts` and `ApiKey.schema.ts` build failures.
+**Decisions:** Config in `systemPrompt` (no new columns); upsert with diff-check before flush; startup hook uses `orm.em.fork()` to avoid polluting main EM.
+
+## 2026-03-01: Tenant org_slug
+
+**By:** Fenster (Backend Dev)
+**What:** Added `orgSlug` to Tenant entity, schema, DTOs. Created `src/utils/slug.ts` (`generateOrgSlug`, `validateOrgSlug`). Extended `PATCH /v1/portal/settings` to accept and validate `orgSlug`. Auto-generated on tenant creation and invite acceptance. Uniqueness collision strategy: append `-2`, `-3`, etc. on creation; 409 on PATCH collision.
+**Decisions:** `provider` made optional in PATCH (avoids duplicate route registration); uniqueness check runs before `em.flush()` (safe — new row not yet visible in DB).
+
+## 2026-03-01: Registry Gateway Routes
+
+**By:** Fenster (Backend Dev)
+**What:** Created `src/routes/registry.ts` — 7 Fastify routes covering push (multipart), list, pull, delete, deploy, list-deployments, unprovision. Registered in `src/index.ts`. Added `@fastify/multipart` (^9.4.0) runtime dependency.
+**Decisions:** `REGISTRY_JWT_SECRET` → `PORTAL_JWT_SECRET` → dev fallback; `orm.em.fork()` per request; sha256 validated on push if provided; `registryAuth` preHandler per-route for per-scope enforcement.
+
+## 2026-03-01: Portal KB + Deployment Routes
+
+**By:** Fenster (Backend Dev)
+**What:** Added 6 routes to `src/routes/portal.ts` — GET/DELETE `/v1/portal/knowledge-bases`, GET/DELETE `/v1/portal/knowledge-bases/:id`, GET/DELETE `/v1/portal/deployments`, GET/DELETE `/v1/portal/deployments/:id`. Live `chunkCount` via `em.count(KbChunk)`. `searchReady: chunkCount > 0` convenience flag.
+**Decisions:** `orm.em.fork()` per handler (no signature change needed); `runtimeToken` excluded from responses; `authRequired` (not `ownerRequired`) — consistent with trace/analytics routes.
+
+## 2026-03-01: CLI Package Scaffold — @arachne/cli
+
+**By:** McManus (Frontend/CLI)
+**What:** Scaffolded `cli/` package as standalone Node.js CLI. `cli/package.json` (`@arachne/cli`, Commander.js + node-fetch + form-data, ESM, `arachne` bin), `cli/tsconfig.json`, `cli/src/index.ts` (entry point), 4 command stubs (login, weave, push, deploy), `cli/src/config.ts` (read/write `~/.arachne/config.json`, env var fallback). Added `"workspaces": ["cli"]` to root `package.json`.
+
+## 2026-03-01: RAG Retrieval at Inference Time
+
+**By:** Kobayashi (LLM/RAG)
+**What:** Implemented end-to-end RAG pipeline at inference time. New `src/rag/retrieval.ts` (`retrieveChunks()` via pgvector cosine similarity, `buildRagContext()` numbered block with citation instruction). `injectRagContext()` export added to `src/agent.ts`. `knowledgeBaseRef` threaded through `TenantContext`. 13 RAG trace fields wired through `tracing.ts` → `Trace.ts` → INSERT SQL. New migration `1000000000016_add-agent-knowledge-base-ref.cjs`.
+**Decisions:** Inject BEFORE `applyAgentToRequest` (rag-context prepends agent system prompt); fallback-to-no-RAG on any failure (inference never blocked); topK hardcoded to 5 (configurable later); system embedder default via env vars; knex.raw `?::vector` cast for pgvector.
+
+## 2026-03-01: Resolved Open Questions — Arachne CLI + RAG P0
+
+**By:** Michael Brown (product)
+**What:** Three open questions resolved for the P0 sprint:
+1. **Org slug** — configurable per tenant; unique; defaults to slugified tenant name; `PATCH /v1/portal/settings` exposes update.
+2. **RAG inference scope** — IN SCOPE for P0. Gateway injects top-K chunks at inference time for agents with `knowledgeBaseRef`.
+3. **System embedder** — `SYSTEM_EMBEDDER_PROVIDER` / `SYSTEM_EMBEDDER_MODEL` / `SYSTEM_EMBEDDER_API_KEY` env vars as gateway fallback when no explicit embedding agent is configured.

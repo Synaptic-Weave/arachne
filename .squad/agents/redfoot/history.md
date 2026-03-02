@@ -130,3 +130,22 @@ Identified six priority areas for Loom analytics expansion:
 
 **Decision Merged:** 2026-03-01  
 Redfoot's RAG analytics recommendations merged into `.squad/decisions.md` with Kobayashi's raw signal spec. Three-phase implementation plan (P0: MVP, P1: depth, P2: granularity) now documented for team execution. Phasing allows launch without full analytics stack while preserving future extensibility.
+
+### 2026-03-01: RAG Analytics P0 Implementation
+
+**What:** Implemented P0 RAG analytics — extended the analytics pipeline and portal dashboard with RAG performance tiles.
+
+**Files modified:**
+- `src/analytics.ts` — added `ragMetrics` computed fields: `ragRequestCount`, `ragFallbackRate`, `avgRetrievalLatencyMs`, `avgChunkSimilarity`, `ragOverheadRatio`; derived from new RAG trace fields
+- `src/types.ts` (or analytics types) — extended `SummaryData` type with RAG metric fields
+- `portal/src/components/AnalyticsSummary.tsx` — added "RAG Performance" tile group: RAG Requests, Fallback Rate, Avg Retrieval Latency, Avg Chunk Similarity tiles; conditionally rendered when `ragRequestCount > 0`
+
+**Key decisions:**
+- P0 tiles are additive and conditionally rendered (zero disruption to tenants without RAG)
+- `ragOverheadRatio = ragRetrievalLatencyMs / totalLatencyMs` — pre-computed server-side for clean frontend consumption
+- Fallback rate surfaced prominently as a health signal (high fallback = KB or embedder issue)
+
+**Handoff notes for P1:**
+- `artifact_operations` table (already in migration) ready for weave/push lifecycle charts
+- Pre-aggregated hourly rollups can be added to `analytics.ts` aggregation layer
+- KB detail page analytics tab (coverage ratio, hot chunks) deferred to P1
