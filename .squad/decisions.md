@@ -2376,3 +2376,40 @@ Any test that asserts on visible UI text strings (`getByText`, `getAllByText`) w
 
 ### Action
 McManus (Frontend): Consider adding `data-testid` anchors to LandingPage feature card section and hero heading for future test stability.
+# Decision: Exclude Test Files from portal/tsconfig.json
+
+**Date:** 2025-07-14
+**Author:** McManus (Frontend Dev)
+**Requested by:** Michael Brown
+
+## Context
+
+`docker build -f Dockerfile.portal .` was failing during the `tsc && vite build` step. TypeScript was compiling test files under `src/**/__tests__/` and `src/**/*.test.tsx`, which reference `global` (a Node.js global unavailable in the browser DOM TS lib).
+
+Locally `npm run build` succeeded because Vite handles transpilation itself and doesn't surface these TS errors in the same way. Docker exposes the failure because it runs a clean `tsc` pass first.
+
+## Decision
+
+Added `"exclude"` to `portal/tsconfig.json` to explicitly remove test files from the production TypeScript compilation:
+
+```json
+"exclude": ["src/**/__tests__/**", "src/**/*.test.ts", "src/**/*.test.tsx"]
+```
+
+## Alternatives Considered
+
+1. **Add `@types/node`** — would let `global` compile, but is wrong because production browser code shouldn't have Node types mixed in.
+2. **Add a separate `tsconfig.test.json`** — cleaner long-term, but adds complexity for no immediate gain since Vitest already handles its own tsconfig via `viteEnvironment`.
+3. **Move test files outside `src/`** — invasive refactor, changes existing test structure for all 635 tests.
+
+## Rationale
+
+The `exclude` approach is the minimal, idiomatic fix. TypeScript docs recommend excluding test files from the app tsconfig when they're not part of the compiled output. This aligns with standard Vite+React+Vitest project conventions.
+
+## Impact
+
+- `portal/tsconfig.json` — one line added
+- No changes to test setup, test files, or Vite config
+- Docker build now succeeds
+- 635 existing tests continue to pass (Vitest uses its own config)
+

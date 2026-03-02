@@ -1066,3 +1066,37 @@ The Agent interface was updated to require `createdAt`, and mergePolicies type w
 
 **Takeaway:**
 When API types change (especially adding required fields or restricting to literal unions), all test mocks must be updated. Creating proper type declaration files (like vite-env.d.ts) prevents environment-specific type errors.
+
+---
+
+## Session: Docker Build Fix
+
+**Date:** $(date +%Y-%m-%d)
+
+### Problem
+`docker build -f Dockerfile.portal .` was failing with TypeScript errors:
+```
+src/pages/__tests__/AgentsPage.test.tsx(99,5): error TS2304: Cannot find name 'global'.
+```
+Multiple test files were included in the production TypeScript compilation, which failed because test files reference `global` (a Node.js runtime global not available in browser/DOM TS lib).
+
+### Root Cause
+`portal/tsconfig.json` had `"include": ["src", "../shared"]` with **no `exclude`**. This caused `tsc` to compile all files under `src/`, including `src/**/__tests__/`. Test files use `global.fetch = ...` patterns valid in Vitest/Node context but not in the browser DOM lib.
+
+The previous fix session resolved the `npm run build` locally (probably because the test files didn't exist on disk at that time or a .dockerignore was excluding them), but they ARE present in the Docker build context.
+
+### Fix
+Added `"exclude"` to `portal/tsconfig.json`:
+```json
+"exclude": ["src/**/__tests__/**", "src/**/*.test.ts", "src/**/*.test.tsx"]
+```
+
+**File changed:** `portal/tsconfig.json`
+
+### Verification
+✅ `docker build -f Dockerfile.portal .` completes successfully
+✅ Vite produces `dist/index.html` and bundled assets
+✅ No TypeScript errors during Docker build
+
+### Takeaway
+`tsconfig.json` for a browser app should always explicitly exclude `**/__tests__/**` and `**/*.test.{ts,tsx}` — even if `npm run build` passes locally (Vite uses its own resolution), `tsc` alone (which runs first in `tsc && vite build`) will pick up test files unless excluded. Docker builds expose this because they run the full clean pipeline.
