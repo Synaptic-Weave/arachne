@@ -20,4 +20,5 @@
 | Redfoot | Data Engineer | Analytics pipelines, time-series queries, aggregation, observability metrics, dashboard data contracts | 📊 Data Engineer |
 | Verbal | Domain Model Expert | Peter Coad Color Modeling, DDD, aggregate roots, domain events, ubiquitous language | 🏛️ Domain Expert |
 | Kobayashi | AI Expert | LLM integration, model routing, prompt engineering, token management, LLM observability | 🤖 AI Expert |
+| Edie | Technical Writer | Internal architecture docs, API reference, user guides, CLI docs, README, public-facing docs | 📝 Technical Writer |
 | Scribe | Session Logger | Memory, decisions, session logs | 📋 Scribe |

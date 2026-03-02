@@ -24,3 +24,7 @@
 | LLM observability, trace enrichment, token counts, cost estimates | Kobayashi | AI Expert owns AI-specific telemetry |
 | Streaming chunk handling, SSE, partial trace recording | Kobayashi | AI Expert owns LLM streaming behavior |
 | Embeddings, multi-modal, evals, A/B model testing | Kobayashi | AI Expert owns advanced AI capabilities |
+| Documentation, README, user guides, CLI docs | Edie | Technical Writer owns all docs |
+| Internal architecture docs, API reference | Edie | Technical Writer maintains internal documentation |
+| Public-facing feature docs, announcements, tutorials | Edie | Technical Writer owns user-facing content |
+| Documentation review, Definition of Done doc gate | Edie | Technical Writer reviews stories for doc completeness |

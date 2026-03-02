@@ -2098,3 +2098,12 @@ New tables:
 1. **Org slug** — configurable per tenant; unique; defaults to slugified tenant name; `PATCH /v1/portal/settings` exposes update.
 2. **RAG inference scope** — IN SCOPE for P0. Gateway injects top-K chunks at inference time for agents with `knowledgeBaseRef`.
 3. **System embedder** — `SYSTEM_EMBEDDER_PROVIDER` / `SYSTEM_EMBEDDER_MODEL` / `SYSTEM_EMBEDDER_API_KEY` env vars as gateway fallback when no explicit embedding agent is configured.
+
+## 2026-03-02: Definition of Done Update
+
+**By:** Michael Brown (via Copilot directive)
+**What:** Updated Definition of Done for all user stories:
+1. Code coverage for new features must be 80% or above
+2. Documentation must be written/updated covering what has changed or been added — both internal (architecture/API docs) and public user-facing docs
+**Why:** User request — captured for team memory
+**Impact:** All future features must pass Edie's documentation gate before closure; enforces quality bar and knowledge preservation
