@@ -1,25 +1,32 @@
 # deploy.yml
 #
-# Deploys updated Container App images to Azure after Docker images are published to GHCR.
+# Deploys updated Container App images to Azure.
+#
+# Triggers:
+#   - Push to `dev` branch → auto-deploys to dev environment
+#   - workflow_dispatch    → manual deploy to dev or prod (prod is manual-only)
 #
 # Required secrets:
-#   AZURE_CREDENTIALS — JSON service principal from:
-#     az ad sp create-for-rbac --name "arachne-deploy" --role contributor \
-#       --scopes /subscriptions/<id>/resourceGroups/<rg> --sdk-auth
-#
-# Required repository variables:
-#   AZURE_RESOURCE_GROUP — name of the Azure resource group (e.g. arachne-prod-rg)
+#   AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
 
 name: Deploy to Azure
 
 on:
-  workflow_run:
-    workflows: ["Publish Docker Images"]
-    types: [completed]
+  push:
+    branches:
+      - dev
   workflow_dispatch:
     inputs:
+      environment:
+        description: 'Target environment (dev or prod)'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - prod
       sha:
-        description: 'Git SHA to deploy (defaults to latest on main)'
+        description: 'Git SHA to deploy (defaults to latest on branch)'
         required: false
         default: ''
       owner:
@@ -31,29 +38,25 @@ jobs:
   deploy:
     name: Update Container App images
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    env:
+      DEPLOY_ENV: ${{ github.event_name == 'push' && 'dev' || inputs.environment }}
 
     steps:
       - name: Resolve image coordinates
         id: coords
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            SHA="${{ inputs.sha }}"
-            if [[ -z "$SHA" ]]; then
-              SHA=$(git ls-remote https://github.com/${{ github.repository }}.git refs/heads/main | cut -f1)
-            fi
-            OWNER="${{ inputs.owner }}"
-            if [[ -z "$OWNER" ]]; then
-              OWNER="${{ github.repository_owner }}"
-            fi
-          else
-            SHA="${{ github.event.workflow_run.head_sha }}"
-            OWNER="${{ github.event.workflow_run.head_repository.owner.login }}"
+          SHA="${{ inputs.sha }}"
+          if [[ -z "$SHA" ]]; then
+            SHA="${{ github.sha }}"
+          fi
+          OWNER="${{ inputs.owner }}"
+          if [[ -z "$OWNER" ]]; then
+            OWNER="${{ github.repository_owner }}"
           fi
           OWNER="${OWNER,,}"
           echo "sha=$SHA" >> $GITHUB_OUTPUT
           echo "owner=$OWNER" >> $GITHUB_OUTPUT
-          echo "Deploying SHA: $SHA (owner: $OWNER)"
+          echo "Deploying SHA: $SHA to ${{ env.DEPLOY_ENV }} (owner: $OWNER)"
 
       - name: Azure login
         run: |
@@ -66,13 +69,13 @@ jobs:
       - name: Update gateway image
         run: |
           az containerapp update \
-            --name ca-arachne-gateway-prod \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --name ca-arachne-gateway-${{ env.DEPLOY_ENV }} \
+            --resource-group rg-arachne-${{ env.DEPLOY_ENV }} \
             --image ghcr.io/${{ steps.coords.outputs.owner }}/arachne-gateway:${{ steps.coords.outputs.sha }}
 
       - name: Update portal image
         run: |
           az containerapp update \
-            --name ca-arachne-portal-prod \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --name ca-arachne-portal-${{ env.DEPLOY_ENV }} \
+            --resource-group rg-arachne-${{ env.DEPLOY_ENV }} \
             --image ghcr.io/${{ steps.coords.outputs.owner }}/arachne-portal:${{ steps.coords.outputs.sha }}
