@@ -80,7 +80,7 @@ export class AdminService {
       id: string;
       username: string;
       password_hash: string;
-    }>('SELECT id, username, password_hash FROM admin_users WHERE username = $1', [username]);
+    }>('SELECT id, username, password_hash FROM admin_users WHERE username = ?', [username]);
 
     if (result.rows.length === 0) return null;
 
@@ -92,14 +92,14 @@ export class AdminService {
   }
 
   async updateAdminLastLogin(id: string): Promise<void> {
-    await this.rawQuery('UPDATE admin_users SET last_login = now() WHERE id = $1', [id]);
+    await this.rawQuery('UPDATE admin_users SET last_login = now() WHERE id = ?', [id]);
   }
 
   // ── Tenants ───────────────────────────────────────────────────────────────
 
   async createTenant(name: string): Promise<TenantRow> {
     const result = await this.rawQuery<TenantRow>(
-      'INSERT INTO tenants (name) VALUES ($1) RETURNING id, name, status, created_at, updated_at',
+      'INSERT INTO tenants (name) VALUES (?) RETURNING id, name, status, created_at, updated_at',
       [name],
     );
     return result.rows[0];
@@ -114,17 +114,17 @@ export class AdminService {
     const params: unknown[] = [];
 
     if (status) {
-      sql += ' WHERE status = $1';
+      sql += ' WHERE status = ?';
       params.push(status);
     }
 
-    sql += ` ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    sql += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`;
     params.push(limit, offset);
 
     const [tenants, countResult] = await Promise.all([
       this.rawQuery<TenantRow>(sql, params),
       this.rawQuery<{ count: string }>(
-        status ? 'SELECT COUNT(*) FROM tenants WHERE status = $1' : 'SELECT COUNT(*) FROM tenants',
+        status ? 'SELECT COUNT(*) FROM tenants WHERE status = ?' : 'SELECT COUNT(*) FROM tenants',
         status ? [status] : [],
       ),
     ]);
@@ -147,7 +147,7 @@ export class AdminService {
         COUNT(ak.id) AS api_key_count
        FROM tenants t
        LEFT JOIN api_keys ak ON ak.tenant_id = t.id
-       WHERE t.id = $1
+       WHERE t.id = ?
        GROUP BY t.id`,
       [id],
     );
@@ -163,45 +163,47 @@ export class AdminService {
     let paramIndex = 1;
 
     if (fields.name) {
-      updates.push(`name = $${paramIndex++}`);
+      updates.push(`name = ?`);
       params.push(fields.name.trim());
+      paramIndex++;
     }
     if (fields.status) {
-      updates.push(`status = $${paramIndex++}`);
+      updates.push(`status = ?`);
       params.push(fields.status);
+      paramIndex++;
     }
     updates.push(`updated_at = now()`);
     params.push(id);
 
     const result = await this.rawQuery<TenantRow>(
-      `UPDATE tenants SET ${updates.join(', ')} WHERE id = $${paramIndex} RETURNING id, name, status, created_at, updated_at`,
+      `UPDATE tenants SET ${updates.join(', ')} WHERE id = ? RETURNING id, name, status, created_at, updated_at`,
       params,
     );
     return result.rows[0] ?? null;
   }
 
   async deleteTenant(id: string): Promise<boolean> {
-    const result = await this.rawQuery('DELETE FROM tenants WHERE id = $1 RETURNING id', [id]);
+    const result = await this.rawQuery('DELETE FROM tenants WHERE id = ? RETURNING id', [id]);
     return result.rows.length > 0;
   }
 
   // ── Provider config ────────────────────────────────────────────────────────
 
   async tenantExists(id: string): Promise<boolean> {
-    const result = await this.rawQuery('SELECT id FROM tenants WHERE id = $1', [id]);
+    const result = await this.rawQuery('SELECT id FROM tenants WHERE id = ?', [id]);
     return result.rows.length > 0;
   }
 
   async setProviderConfig(id: string, providerConfig: object): Promise<void> {
     await this.rawQuery(
-      'UPDATE tenants SET provider_config = $1, updated_at = now() WHERE id = $2',
+      'UPDATE tenants SET provider_config = ?, updated_at = now() WHERE id = ?',
       [JSON.stringify(providerConfig), id],
     );
   }
 
   async clearProviderConfig(id: string): Promise<boolean> {
     const result = await this.rawQuery(
-      'UPDATE tenants SET provider_config = NULL, updated_at = now() WHERE id = $1 RETURNING id',
+      'UPDATE tenants SET provider_config = NULL, updated_at = now() WHERE id = ? RETURNING id',
       [id],
     );
     return result.rows.length > 0;
@@ -224,7 +226,7 @@ export class AdminService {
       created_at: string;
     }>(
       `INSERT INTO api_keys (tenant_id, name, key_prefix, key_hash)
-       VALUES ($1, $2, $3, $4)
+       VALUES (?, ?, ?, ?)
        RETURNING id, name, key_prefix, status, created_at`,
       [tenantId, name, keyPrefix, keyHash],
     );
@@ -235,7 +237,7 @@ export class AdminService {
     const result = await this.rawQuery<ApiKeyRow>(
       `SELECT id, name, key_prefix, status, created_at, revoked_at
        FROM api_keys
-       WHERE tenant_id = $1
+       WHERE tenant_id = ?
        ORDER BY created_at DESC`,
       [tenantId],
     );
@@ -244,14 +246,14 @@ export class AdminService {
 
   async getApiKeyHash(keyId: string, tenantId: string): Promise<string | null> {
     const result = await this.rawQuery<{ key_hash: string }>(
-      'SELECT key_hash FROM api_keys WHERE id = $1 AND tenant_id = $2',
+      'SELECT key_hash FROM api_keys WHERE id = ? AND tenant_id = ?',
       [keyId, tenantId],
     );
     return result.rows[0]?.key_hash ?? null;
   }
 
   async hardDeleteApiKey(keyId: string, tenantId: string): Promise<void> {
-    await this.rawQuery('DELETE FROM api_keys WHERE id = $1 AND tenant_id = $2', [
+    await this.rawQuery('DELETE FROM api_keys WHERE id = ? AND tenant_id = ?', [
       keyId,
       tenantId,
     ]);
@@ -261,7 +263,7 @@ export class AdminService {
     const result = await this.rawQuery<{ key_hash: string }>(
       `UPDATE api_keys
        SET status = 'revoked', revoked_at = now()
-       WHERE id = $1 AND tenant_id = $2
+       WHERE id = ? AND tenant_id = ?
        RETURNING key_hash`,
       [keyId, tenantId],
     );
@@ -272,16 +274,20 @@ export class AdminService {
 
   async listTraces(filters: ListTracesFilters): Promise<TraceRow[]> {
     const { limit, tenant_id, cursor } = filters;
-    const params: unknown[] = [limit];
+    const params: unknown[] = [];
     let whereClause = '';
 
     if (tenant_id && cursor) {
-      whereClause = `WHERE tenant_id = $${params.push(tenant_id)} AND created_at < $${params.push(cursor)}::timestamptz`;
+      whereClause = `WHERE tenant_id = ? AND created_at < ?::timestamptz`;
+      params.push(tenant_id, cursor);
     } else if (tenant_id) {
-      whereClause = `WHERE tenant_id = $${params.push(tenant_id)}`;
+      whereClause = `WHERE tenant_id = ?`;
+      params.push(tenant_id);
     } else if (cursor) {
-      whereClause = `WHERE created_at < $${params.push(cursor)}::timestamptz`;
+      whereClause = `WHERE created_at < ?::timestamptz`;
+      params.push(cursor);
     }
+    params.push(limit);
 
     const result = await this.rawQuery<TraceRow>(
       `SELECT id, tenant_id, model, provider, status_code, latency_ms,
@@ -289,7 +295,7 @@ export class AdminService {
        FROM   traces
        ${whereClause}
        ORDER  BY created_at DESC
-       LIMIT  $1`,
+       LIMIT  ?`,
       params,
     );
     return result.rows;
