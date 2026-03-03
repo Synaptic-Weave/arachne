@@ -25,24 +25,22 @@ describe('LandingPage', () => {
     expect(links[0]).toHaveAttribute('href', '/login');
   });
 
-  it('renders Get started free link to /signup', () => {
+  it('renders Get started free link to beta signup', () => {
     renderPage();
-    // There are two "Get started free" links; just verify at least one
     const links = screen.getAllByRole('link', { name: /get started free/i });
     expect(links.length).toBeGreaterThan(0);
-    expect(links[0]).toHaveAttribute('href', '/signup');
+    expect(links[0]).toHaveAttribute('href', '#beta-signup');
   });
 
-  it('renders feature cards', () => {
+  it('renders feature sections', () => {
     renderPage();
-    expect(screen.getAllByText(/Full audit traces/i).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/Streaming support/i).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/Multi-tenant proxy/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/A Spec for Agents \+ Knowledge/i)).toBeInTheDocument();
+    expect(screen.getByText(/Build AI Agents Like Containers/i)).toBeInTheDocument();
   });
 
   it('renders the hero tagline', () => {
     renderPage();
-    expect(screen.getByText(/The AI runtime built for builders who ship/i)).toBeInTheDocument();
+    expect(screen.getByText(/Docker for AI Agents/i)).toBeInTheDocument();
   });
 
   it('renders footer with current year', () => {
