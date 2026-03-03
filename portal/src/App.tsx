@@ -23,13 +23,18 @@ import AdminTenantsPage from './pages/AdminTenantsPage';
 import PrivacyPage from './pages/PrivacyPage';
 import AboutPage from './pages/AboutPage';
 
+const ALLOW_SIGNUPS = import.meta.env.VITE_ALLOW_SIGNUPS === 'true';
+
 export default function App() {
   return (
     <AuthProvider>
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/signup" element={<SignupPage />} />
+        <Route
+          path="/signup"
+          element={ALLOW_SIGNUPS ? <SignupPage /> : <Navigate to="/#beta-signup" replace />}
+        />
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/about" element={<AboutPage />} />
         <Route path="/app" element={<AuthGuard><AppLayout /></AuthGuard>}>
@@ -49,6 +54,25 @@ export default function App() {
         <Route path="/admin/login" element={<AdminLoginPage />} />
         <Route path="/admin" element={<AdminProtectedRoute><Navigate to="/admin/tenants" replace /></AdminProtectedRoute>} />
         <Route path="/admin/tenants" element={<AdminProtectedRoute><AdminTenantsPage /></AdminProtectedRoute>} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </AuthProvider>
+  );
+}
+
+          <Route index element={<DashboardHome />} />
+          <Route path="settings" element={<SettingsPage />} />
+          <Route path="api-keys" element={<ApiKeysPage />} />
+          <Route path="traces" element={<TracesPage />} />
+          <Route path="analytics" element={<AnalyticsPage />} />
+          <Route path="members" element={<MembersPage />} />
+          <Route path="subtenants" element={<SubtenantsPage />} />
+          <Route path="agents" element={<AgentsPage />} />
+          <Route path="sandbox" element={<SandboxPage />} />
+          <Route path="conversations" element={<ConversationsPage />} />
+          <Route path="knowledge-bases" element={<KnowledgeBasesPage />} />
+          <Route path="deployments" element={<DeploymentsPage />} />
+        </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AuthProvider>
