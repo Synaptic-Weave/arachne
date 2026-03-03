@@ -50,6 +50,7 @@ jobs:
             SHA="${{ github.event.workflow_run.head_sha }}"
             OWNER="${{ github.event.workflow_run.head_repository.owner.login }}"
           fi
+          OWNER="${OWNER,,}"
           echo "sha=$SHA" >> $GITHUB_OUTPUT
           echo "owner=$OWNER" >> $GITHUB_OUTPUT
           echo "Deploying SHA: $SHA (owner: $OWNER)"
