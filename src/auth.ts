@@ -105,7 +105,7 @@ export function registerAuthMiddleware(fastify: FastifyInstance, em: EntityManag
   fastify.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
     // Public routes — no auth required
     // Skip tenant API key auth for /v1/admin routes (they use JWT auth)
-    if (request.url === '/health' || request.url === '/favicon.ico' || request.url.startsWith('/dashboard') || request.url.startsWith('/v1/admin') || request.url.startsWith('/v1/portal') || !request.url.startsWith('/v1/')) {
+    if (request.url === '/health' || request.url === '/favicon.ico' || request.url.startsWith('/dashboard') || request.url.startsWith('/v1/admin') || request.url.startsWith('/v1/portal') || request.url.startsWith('/v1/beta') || !request.url.startsWith('/v1/')) {
       return;
     }
 

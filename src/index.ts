@@ -22,6 +22,7 @@ import { registerDashboardRoutes } from './routes/dashboard.js';
 import { registerAdminRoutes } from './routes/admin.js';
 import { registerPortalRoutes } from './routes/portal.js';
 import { registerRegistryRoutes } from './routes/registry.js';
+import { registerBetaRoutes } from './routes/beta.js';
 import { initOrm } from './orm.js';
 import { EmbeddingAgentService } from './services/EmbeddingAgentService.js';
 
@@ -127,6 +128,12 @@ const start = async () => {
     // Register registry routes (/v1/registry/*)
     fastify.register((instance, opts, done) => {
       registerRegistryRoutes(instance, orm);
+      done();
+    });
+
+    // Register beta routes (/v1/beta/*)
+    fastify.register((instance, opts, done) => {
+      registerBetaRoutes(instance);
       done();
     });
 
