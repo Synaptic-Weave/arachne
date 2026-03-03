@@ -66,7 +66,8 @@ export default function SignupPage() {
         }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Signup failed');
+      const msg = err instanceof Error ? err.message : 'Signup failed';
+      setError(msg === 'signups_disabled' ? 'Signups are currently closed. Join the waitlist below.' : msg);
     } finally {
       setLoading(false);
     }
