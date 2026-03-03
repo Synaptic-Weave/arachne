@@ -23,8 +23,9 @@ COPY portal/ ./portal/
 WORKDIR /app/portal
 RUN npm run build
 
-# Serve stage
-FROM nginx:alpine
+# Serve stage — pin to stable nginx (mainline 1.29.x enforces HTTP/2 upgrade compliance
+# strictly, returning 426 on Azure Container Apps ingress which passes h2c upgrade headers)
+FROM nginx:stable-alpine
 
 # Copy custom nginx config
 COPY nginx.portal.conf /etc/nginx/conf.d/default.conf
