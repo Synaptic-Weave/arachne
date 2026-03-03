@@ -16,6 +16,7 @@ export default function SignupPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [signupsDisabled, setSignupsDisabled] = useState(false);
   const [newKey, setNewKey] = useState<ApiKeyCreated | null>(null);
 
   // Invite-mode state
@@ -41,6 +42,7 @@ export default function SignupPage() {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setSignupsDisabled(false);
     try {
       if (inviteToken) {
         // Invite signup: no org name, skip API key reveal
@@ -67,7 +69,8 @@ export default function SignupPage() {
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Signup failed';
-      setError(msg === 'signups_disabled' ? 'Signups are currently closed. Join the waitlist below.' : msg);
+      setError(msg === 'signups_disabled' ? 'Signups are currently closed.' : msg);
+      if (msg === 'signups_disabled') setSignupsDisabled(true);
     } finally {
       setLoading(false);
     }
@@ -177,7 +180,7 @@ export default function SignupPage() {
 
           {error && (
             <p className="text-sm text-red-400 bg-red-950/30 border border-red-800 rounded-lg px-3 py-2">
-              {error}
+              {error}{signupsDisabled && <> <a href="/#beta-signup" className="underline">Join the beta waitlist</a>.</>}
             </p>
           )}
 
