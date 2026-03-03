@@ -66,14 +66,11 @@ export async function waitForText(page: Page, selector: string, text: string, ti
 // Login helpers
 // ---------------------------------------------------------------------------
 export async function adminLogin(page: Page) {
-  await page.goto(`${BASE_URL}/dashboard/admin`);
-  // Wait for the login overlay to appear
-  await page.locator('.admin-login-overlay').waitFor({ state: 'visible', timeout: 10000 });
-  await page.locator('input[placeholder*="username" i], input[type="text"]').first().fill(ADMIN_USERNAME);
+  await page.goto(`${BASE_URL}/admin/login`);
+  await page.locator('input[placeholder="admin"], input[type="text"]').first().fill(ADMIN_USERNAME);
   await page.locator('input[type="password"]').fill(ADMIN_PASSWORD);
   await page.locator('button[type="submit"]').click();
-  // Wait for the overlay to be dismissed after successful login
-  await page.locator('.admin-login-overlay').waitFor({ state: 'hidden', timeout: 10000 });
+  await waitForUrl(page, /\/admin\/tenants/, 10000);
 }
 
 export async function portalLogin(page: Page, email: string, password: string): Promise<void> {
