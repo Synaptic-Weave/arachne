@@ -32,7 +32,7 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
         return reply.code(400).send({ error: 'Username and password required' });
       }
 
-      let adminUser: { id: string; username: string } | null;
+      let adminUser: { id: string; username: string; mustChangePassword: boolean } | null;
       try {
         adminUser = await adminService.validateAdminLogin(username, password);
       } catch (err) {
@@ -54,7 +54,39 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
         8 * 60 * 60 * 1000
       );
 
-      return reply.send({ token, username: adminUser.username });
+      return reply.send({ token, username: adminUser.username, mustChangePassword: adminUser.mustChangePassword });
+    }
+  );
+
+  // POST /v1/admin/auth/change-password — Change admin password
+  fastify.post<{ Body: { currentPassword?: string; newPassword: string } }>(
+    '/v1/admin/auth/change-password',
+    { preHandler: adminAuthMiddleware },
+    async (request, reply) => {
+      const { currentPassword, newPassword } = request.body;
+
+      if (!newPassword || newPassword.length < 8) {
+        return reply.code(400).send({ error: 'New password must be at least 8 characters' });
+      }
+
+      const adminId = request.adminUser?.sub;
+      if (!adminId) {
+        return reply.code(401).send({ error: 'Unauthorized' });
+      }
+
+      if (currentPassword) {
+        const result = await adminService.changeAdminPassword(adminId, currentPassword, newPassword);
+        if (!result.success) {
+          if (result.error === 'invalid_current_password') {
+            return reply.code(400).send({ error: 'Current password is incorrect' });
+          }
+          return reply.code(500).send({ error: 'Failed to change password' });
+        }
+      } else {
+        await adminService.forceChangeAdminPassword(adminId, newPassword);
+      }
+
+      return reply.send({ message: 'Password changed successfully' });
     }
   );
 

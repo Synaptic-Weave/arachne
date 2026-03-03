@@ -1,0 +1,11 @@
+{
+  "assignments": [
+    {
+      "assignment_id": "a1",
+      "universe": "the-usual-suspects",
+      "timestamp": "2026-02-24T02:33:16.822Z",
+      "agent_count": 5,
+      "agents": ["Keaton", "Fenster", "McManus", "Hockney", "Scribe"]
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 import { useState, FormEvent } from 'react';
 import { ADMIN_BASE, setAdminToken } from '../utils/adminApi';
+import ForceChangePassword from './ForceChangePassword';
 import './AdminLogin.css';
 
 interface AdminLoginProps {
@@ -11,6 +12,7 @@ function AdminLogin({ onLogin }: AdminLoginProps) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [mustChangePassword, setMustChangePassword] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -27,7 +29,11 @@ function AdminLogin({ onLogin }: AdminLoginProps) {
       if (response.ok) {
         const data = await response.json();
         setAdminToken(data.token);
-        onLogin();
+        if (data.mustChangePassword) {
+          setMustChangePassword(true);
+        } else {
+          onLogin();
+        }
       } else {
         setError('Invalid credentials');
       }
@@ -36,6 +42,15 @@ function AdminLogin({ onLogin }: AdminLoginProps) {
     } finally {
       setLoading(false);
     }
+  }
+
+  function handlePasswordChanged() {
+    setMustChangePassword(false);
+    onLogin();
+  }
+
+  if (mustChangePassword) {
+    return <ForceChangePassword onPasswordChanged={handlePasswordChanged} />;
   }
 
   return (

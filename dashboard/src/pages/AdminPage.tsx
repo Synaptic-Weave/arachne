@@ -2,12 +2,14 @@ import { useState, useEffect } from 'react';
 import AdminLogin from '../components/AdminLogin';
 import TenantsList from '../components/TenantsList';
 import TenantDetail from '../components/TenantDetail';
+import ChangePasswordModal from '../components/ChangePasswordModal';
 import { getAdminToken, clearAdminToken } from '../utils/adminApi';
 import './AdminPage.css';
 
 function AdminPage() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
+  const [showChangePassword, setShowChangePassword] = useState(false);
 
   useEffect(() => {
     const token = getAdminToken();
@@ -39,9 +41,14 @@ function AdminPage() {
     <div className="admin-page">
       <div className="admin-header">
         <h1>Admin Panel</h1>
-        <button className="admin-logout-btn" onClick={handleLogout}>
-          Logout
-        </button>
+        <div className="admin-header-actions">
+          <button className="admin-change-password-btn" onClick={() => setShowChangePassword(true)}>
+            Change Password
+          </button>
+          <button className="admin-logout-btn" onClick={handleLogout}>
+            Logout
+          </button>
+        </div>
       </div>
       <div className="admin-content">
         {selectedTenantId ? (
@@ -50,6 +57,9 @@ function AdminPage() {
           <TenantsList onTenantSelect={handleTenantSelect} />
         )}
       </div>
+      {showChangePassword && (
+        <ChangePasswordModal onClose={() => setShowChangePassword(false)} />
+      )}
     </div>
   );
 }
