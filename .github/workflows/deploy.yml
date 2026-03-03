@@ -1,0 +1,74 @@
+# deploy.yml
+#
+# Deploys updated Container App images to Azure after Docker images are published to GHCR.
+#
+# Required secrets:
+#   AZURE_CREDENTIALS — JSON service principal from:
+#     az ad sp create-for-rbac --name "arachne-deploy" --role contributor \
+#       --scopes /subscriptions/<id>/resourceGroups/<rg> --sdk-auth
+#
+# Required repository variables:
+#   AZURE_RESOURCE_GROUP — name of the Azure resource group (e.g. arachne-prod-rg)
+
+name: Deploy to Azure
+
+on:
+  workflow_run:
+    workflows: ["Publish Docker Images"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: 'Git SHA to deploy (defaults to latest on main)'
+        required: false
+        default: ''
+      owner:
+        description: 'GHCR owner (org/user, defaults to repo owner)'
+        required: false
+        default: ''
+
+jobs:
+  deploy:
+    name: Update Container App images
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - name: Resolve image coordinates
+        id: coords
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            SHA="${{ inputs.sha }}"
+            if [[ -z "$SHA" ]]; then
+              SHA=$(git ls-remote https://github.com/${{ github.repository }}.git refs/heads/main | cut -f1)
+            fi
+            OWNER="${{ inputs.owner }}"
+            if [[ -z "$OWNER" ]]; then
+              OWNER="${{ github.repository_owner }}"
+            fi
+          else
+            SHA="${{ github.event.workflow_run.head_sha }}"
+            OWNER="${{ github.event.workflow_run.head_repository.owner.login }}"
+          fi
+          echo "sha=$SHA" >> $GITHUB_OUTPUT
+          echo "owner=$OWNER" >> $GITHUB_OUTPUT
+          echo "Deploying SHA: $SHA (owner: $OWNER)"
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Update gateway image
+        run: |
+          az containerapp update \
+            --name arachne-gateway \
+            --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
+            --image ghcr.io/${{ steps.coords.outputs.owner }}/arachne-gateway:${{ steps.coords.outputs.sha }}
+
+      - name: Update portal image
+        run: |
+          az containerapp update \
+            --name arachne-portal \
+            --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
+            --image ghcr.io/${{ steps.coords.outputs.owner }}/arachne-portal:${{ steps.coords.outputs.sha }}

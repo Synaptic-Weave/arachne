@@ -39,7 +39,7 @@ Two ways to run Arachne locally: **Docker Compose** (recommended — everything 
 
 | Service | URL | Notes |
 |---------|-----|-------|
-| **PostgreSQL** | `localhost:5432` | Database: `loom`, user: `loom` |
+| **PostgreSQL** | `localhost:5432` | Database: `loom`, user: `loom`; uses `pgvector/pgvector:pg16` (includes pgvector extension for embeddings) |
 | **Ollama** | `localhost:11434` | Local LLM; pull models after first start |
 | **Gateway** | `http://localhost:3000` | Arachne API (OpenAI-compatible) |
 | **Portal** | `http://localhost:5174` | Web UI (proxies `/v1` to gateway) |
