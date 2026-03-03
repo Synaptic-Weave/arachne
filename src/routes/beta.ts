@@ -1,5 +1,7 @@
 import type { FastifyInstance } from 'fastify';
-import { query } from '../db.js';
+import { UniqueConstraintViolationException } from '@mikro-orm/core';
+import { orm } from '../orm.js';
+import { BetaSignup } from '../domain/entities/BetaSignup.js';
 
 export function registerBetaRoutes(fastify: FastifyInstance): void {
   // ── POST /v1/beta/signup ──────────────────────────────────────────────────
@@ -13,18 +15,16 @@ export function registerBetaRoutes(fastify: FastifyInstance): void {
       return reply.code(400).send({ error: 'Valid email is required' });
     }
 
+    const em = orm.em.fork();
     try {
-      await query(
-        `INSERT INTO beta_signups (email, name) VALUES (?, ?)`,
-        [email.toLowerCase().trim(), name ?? null],
-      );
+      const signup = new BetaSignup(email.toLowerCase().trim(), name);
+      await em.persistAndFlush(signup);
       return reply.code(201).send({
         status: 'registered',
         message: "You're on the list! We'll be in touch.",
       });
     } catch (err: any) {
-      // Unique constraint violation — email already registered
-      if (err?.code === '23505') {
+      if (err instanceof UniqueConstraintViolationException) {
         return reply.code(200).send({ status: 'already_registered' });
       }
       fastify.log.error({ err }, 'beta/signup insert failed');
@@ -32,3 +32,4 @@ export function registerBetaRoutes(fastify: FastifyInstance): void {
     }
   });
 }
+

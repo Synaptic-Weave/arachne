@@ -18,3 +18,4 @@ export { KbChunk } from './KbChunk.js';
 export { Deployment } from './Deployment.js';
 export type { DeploymentStatus } from './Deployment.js';
 export { ArtifactTag } from './ArtifactTag.js';
+export { BetaSignup } from './BetaSignup.js';
