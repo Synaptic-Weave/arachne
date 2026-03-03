@@ -1692,3 +1692,28 @@ const t = Object.assign(Object.create(Tenant.prototype) as Tenant, {
 
 **Impact:** Backend ready for beta launch with clear invite-only enforcement and UX-friendly signup flow.
 
+
+---
+
+## 2026-03-03: Beta Signup Proxy Fix (#97)
+
+**Problem:** Beta signup form POST to `/v1/beta/signup` failing silently in production. Form worked locally but failed when deployed to Azure Container Apps.
+
+**Investigation:**
+- Confirmed route registration: `registerBetaRoutes()` called in `src/index.ts` ✓
+- Confirmed migration: `1000000000017_beta_signups.cjs` correct ✓
+- Confirmed CORS: ALLOWED_ORIGINS set correctly ✓
+- **Found bug:** `nginx.portal.conf` used `proxy_set_header Host $host;` which forwards client hostname to gateway
+
+**Root Cause:** Azure Container Apps routes by Host header. Nginx was sending portal's hostname (`arachne-ai.com`) instead of gateway's FQDN. ACA rejected requests because Host didn't match the gateway service.
+
+**Fix (PR #97):**
+- Changed `proxy_set_header Host $host;` → `proxy_set_header Host ca-arachne-gateway-prod.happysea-1e8f1a10.centralus.azurecontainerapps.io;`
+- Added `proxy_ssl_server_name on;` for SNI support with HTTPS upstream
+
+**Learnings:**
+- **ACA Host header routing:** Unlike traditional reverse proxies, ACA requires Host header to match upstream service's FQDN. Using `$host` (client hostname) causes routing failures.
+- **nginx SNI:** When proxying to HTTPS upstream with a hardcoded Host header, must enable `proxy_ssl_server_name on;` for proper TLS handshake.
+- **Debugging proxy issues:** Check nginx config first when API calls work locally but fail in cloud environments with reverse proxy layers.
+
+**Decision:** Documented in `.squad/decisions.md` under "nginx proxy Host Header Must Match Upstream FQDN for Azure Container Apps"

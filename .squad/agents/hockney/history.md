@@ -583,7 +583,7 @@
 - **Testing 500 errors:** Use `mockQuery.mockRejectedValue(err)` (not `mockRejectedValueOnce`) to ensure the error persists for the single inject call. With `mockRejectedValueOnce`, if the mock is called multiple times in the same test, it will succeed on the second call.
 
 **Coverage Gap Identified:**
-- Email validation happens before normalization, so valid emails with whitespace are rejected. Should validation happen after `.trim()`? Documented in `.squad/decisions/inbox/hockney-beta-signup-coverage.md`.
+- Email validation happens before normalization, so valid emails with whitespace are rejected. Should validation happen after `.trim()`? Documented in `.squad/decisions.md` under "Beta Signup Coverage Gap — Email Validation Whitespace Ordering".
 
 **Build Status:**
 - ✅ All 10 tests passing

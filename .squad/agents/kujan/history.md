@@ -78,3 +78,21 @@
 - Removed `database_url` and `db_admin_password` from root `variables.tf` — both are now derived automatically
 - Bumped azurerm provider constraint from `~> 3.0` to `~> 3.87` to unlock `key_vault_secret_id` on Container App secret blocks
 - Added `random` provider `~> 3.0` to root terraform block (forwarded to keyvault module which also declares it)
+
+- 2026-03-02: Fixed local dev Postgres image from `postgres:16-alpine` to `pgvector/pgvector:pg16` — pgvector extension required for migration 015 (kb_chunks embeddings with vector storage)
+
+---
+
+## 2026-03-03: Beta Signup Proxy Fix (#97) — Docker & Dev Environment
+
+**Issue:** Developers running migrations locally failed due to missing pgvector extension.
+
+**Fix:**
+- Updated `docker-compose.yml` postgres service image from `postgres:16-alpine` to `pgvector/pgvector:pg16`
+- Updated `RUNNING_LOCALLY.md` to reflect pgvector requirement
+
+**Why:** Migration 015 adds kb_chunks table with `embedding` column (vector type). Alpine postgres image doesn't include pgvector extension; migrations fail with "type \"vector\" does not exist".
+
+**Impact:** All developers can now run full migration suite locally without manual extension installation. pgvector/pgvector image is production-ready (based on official postgres:16).
+
+**Decision:** Documented in `.squad/decisions.md` under "Local Dev Postgres Image Must Be pgvector/pgvector:pg16"

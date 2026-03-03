@@ -1,5 +1,39 @@
 # Team Decisions
 
+## 2026-03-03: Beta Signup Proxy Fix — nginx Host Header & Infrastructure
+
+**By:** Fenster (Backend), Hockney (Tester), Kujan (DevOps)  
+**PR:** #97  
+**Branch:** `feature/fix-beta-signup-proxy`
+
+### nginx proxy Host Header Must Match Upstream FQDN for Azure Container Apps
+**Decision:** Hardcode gateway FQDN in `proxy_set_header Host` directive; enable SNI with `proxy_ssl_server_name on`.  
+**Rationale:** ACA routes traffic by Host header. `proxy_set_header Host $host` forwards the client's host (portal domain `arachne-ai.com`) to the gateway, causing ACA to reject the request. Fixed by:
+- `proxy_set_header Host ca-arachne-gateway-prod.happysea-1e8f1a10.centralus.azurecontainerapps.io;`
+- `proxy_ssl_server_name on;` for SNI support
+**Impact:** Beta signup form POST now routes correctly to the gateway; silent failures eliminated.
+
+### Beta Signup Coverage Gap — Email Validation Whitespace Ordering
+**Reporter:** Hockney (Tester)  
+**Severity:** Low (UX issue, not security/data integrity)  
+**Issue:** Email validation regex runs BEFORE trimming, rejecting valid emails with leading/trailing whitespace.
+- Input `"  user@example.com  "` → 400 error (regex rejects)
+- Input `"user@example.com"` → 201 success (trimmed later)
+
+**Recommendation:** Trim email BEFORE validation (1-line change in `src/routes/beta.ts`):
+```typescript
+const trimmedEmail = email.toLowerCase().trim();
+if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+  return reply.code(400).send({ error: 'Valid email is required' });
+}
+```
+**Test Coverage:** Hockney wrote 10 tests for POST /v1/beta/signup; test for whitespace will need updating if validation order is fixed.
+
+### Local Dev Postgres Image Must Be pgvector/pgvector:pg16
+**Decision:** Use `pgvector/pgvector:pg16` instead of `postgres:16-alpine` in `docker-compose.yml`.  
+**Rationale:** pgvector extension required for migration 015 (kb_chunks embeddings table). Alpine image does not include pgvector; migrations fail locally without it.
+**Impact:** Developers can now run full migration suite locally without manual pgvector extension installation.
+
 ## 2026-03-02: CI and GHCR Publish Workflows
 
 **By:** Kujan (DevOps)  
