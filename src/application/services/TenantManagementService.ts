@@ -117,7 +117,7 @@ export class TenantManagementService {
     createdByUserId: string,
     dto: CreateInviteDto,
   ): Promise<InviteViewModel> {
-    const tenant = await this.em.findOneOrFail(Tenant, { id: tenantId });
+    const tenant = await this.em.findOneOrFail(Tenant, { id: tenantId }, { populate: ['invites'] });
     const createdBy = await this.em.findOneOrFail(User, { id: createdByUserId });
     const invite = tenant.createInvite(createdBy, dto.maxUses, dto.expiresInDays);
     this.em.persist(invite);
@@ -209,7 +209,7 @@ export class TenantManagementService {
     agentId: string,
     dto: CreateApiKeyDto,
   ): Promise<ApiKeyCreatedViewModel> {
-    const agent = await this.em.findOneOrFail(Agent, { id: agentId, tenant: tenantId }, { populate: ['tenant'] });
+    const agent = await this.em.findOneOrFail(Agent, { id: agentId, tenant: tenantId }, { populate: ['tenant', 'apiKeys'] });
     const { entity: apiKey, rawKey } = agent.createApiKey(dto.name ?? 'Default Key');
     this.em.persist(apiKey);
     await this.em.flush();

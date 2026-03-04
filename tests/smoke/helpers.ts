@@ -66,11 +66,21 @@ export async function waitForText(page: Page, selector: string, text: string, ti
 // Login helpers
 // ---------------------------------------------------------------------------
 export async function adminLogin(page: Page) {
-  await page.goto(`${BASE_URL}/admin/login`);
+  await page.goto(`${BASE_URL}/dashboard/admin`);
   await page.locator('input[placeholder="admin"], input[type="text"]').first().fill(ADMIN_USERNAME);
   await page.locator('input[type="password"]').fill(ADMIN_PASSWORD);
   await page.locator('button[type="submit"]').click();
-  await waitForUrl(page, /\/admin\/tenants/, 10000);
+
+  // Handle force-change-password modal if must_change_password flag is set
+  const forceDialog = page.locator('[aria-label="Change Password"]');
+  const isForced = await forceDialog.isVisible({ timeout: 3000 }).catch(() => false);
+  if (isForced) {
+    await page.locator('[aria-label="New Password"]').fill(ADMIN_PASSWORD);
+    await page.locator('[aria-label="Confirm Password"]').fill(ADMIN_PASSWORD);
+    await page.locator('[aria-label="Change Password"] button[type="submit"]').click();
+  }
+
+  await waitForUrl(page, /\/dashboard\/admin/, 10000);
 }
 
 export async function portalLogin(page: Page, email: string, password: string): Promise<void> {

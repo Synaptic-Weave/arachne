@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { Collection } from '@mikro-orm/core';
 import { Agent } from './Agent.js';
 import { TenantMembership } from './TenantMembership.js';
 import { Invite } from './Invite.js';
@@ -15,12 +16,12 @@ export class Tenant {
   mcpEndpoints!: any[] | null;
   status!: string;
   availableModels!: any[] | null;
-  updatedAt!: Date | null;
+  updatedAt!: Date;
   createdAt!: Date;
 
-  agents: Agent[] = [];
-  members: TenantMembership[] = [];
-  invites: Invite[] = [];
+  agents = new Collection<Agent>(this);
+  members = new Collection<TenantMembership>(this);
+  invites = new Collection<Invite>(this);
 
   constructor(owner: User, name: string) {
     this.id = randomUUID();
@@ -32,29 +33,26 @@ export class Tenant {
     this.mcpEndpoints = null;
     this.status = 'active';
     this.availableModels = null;
-    this.updatedAt = null;
+    this.updatedAt = new Date();
     this.createdAt = new Date();
-    this.agents = [];
-    this.members = [];
-    this.invites = [];
     this.addMembership(owner, 'owner');
   }
 
   createAgent(name: string, config?: Partial<Agent>): Agent {
     const agent = new Agent(this, name, config);
-    this.agents.push(agent);
+    this.agents.add(agent);
     return agent;
   }
 
   createInvite(createdBy: User, maxUses?: number, expiresInDays = 7): Invite {
     const invite = new Invite(this, createdBy, maxUses ?? null, expiresInDays);
-    this.invites.push(invite);
+    this.invites.add(invite);
     return invite;
   }
 
   addMembership(user: User, role: string): TenantMembership {
     const membership = new TenantMembership(this, user, role);
-    this.members.push(membership);
+    this.members.add(membership);
     return membership;
   }
 

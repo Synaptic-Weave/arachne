@@ -101,17 +101,17 @@ export async function getAnalyticsSummary(
        )::float                                                       AS error_rate,
        COALESCE(AVG(gateway_overhead_ms), 0)::float                  AS avg_overhead_ms,
        COALESCE(AVG(ttfb_ms), 0)::float                              AS avg_ttfb_ms,
-       COUNT(*) FILTER (WHERE rag_artifact_id IS NOT NULL)::int       AS rag_total_requests,
+       COUNT(*) FILTER (WHERE knowledge_base_id IS NOT NULL)::int       AS rag_total_requests,
        COALESCE(
-         COUNT(*) FILTER (WHERE rag_artifact_id IS NOT NULL AND rag_stage_failed IS NOT NULL)::float
-           / NULLIF(COUNT(*) FILTER (WHERE rag_artifact_id IS NOT NULL), 0),
+         COUNT(*) FILTER (WHERE knowledge_base_id IS NOT NULL AND rag_stage_failed IS NOT NULL)::float
+           / NULLIF(COUNT(*) FILTER (WHERE knowledge_base_id IS NOT NULL), 0),
          0
        )::float                                                       AS rag_failure_rate,
-       COALESCE(AVG(rag_retrieval_ms) FILTER (WHERE rag_artifact_id IS NOT NULL), 0)::float AS avg_retrieval_ms,
-       COALESCE(AVG(rag_chunks_retrieved) FILTER (WHERE rag_artifact_id IS NOT NULL), 0)::float AS avg_chunks_retrieved,
+       COALESCE(AVG(rag_retrieval_latency_ms) FILTER (WHERE knowledge_base_id IS NOT NULL), 0)::float AS avg_retrieval_ms,
+       COALESCE(AVG(retrieved_chunk_count) FILTER (WHERE knowledge_base_id IS NOT NULL), 0)::float AS avg_chunks_retrieved,
        COALESCE(
-         COUNT(*) FILTER (WHERE rag_fallback_to_no_rag = true)::float
-           / NULLIF(COUNT(*) FILTER (WHERE rag_artifact_id IS NOT NULL), 0),
+         COUNT(*) FILTER (WHERE fallback_to_no_rag = true)::float
+           / NULLIF(COUNT(*) FILTER (WHERE knowledge_base_id IS NOT NULL), 0),
          0
        )::float                                                       AS rag_fallback_rate
      FROM traces
@@ -135,17 +135,17 @@ export async function getAnalyticsSummary(
        )::float                                                       AS error_rate,
        COALESCE(AVG(gateway_overhead_ms), 0)::float                  AS avg_overhead_ms,
        COALESCE(AVG(ttfb_ms), 0)::float                              AS avg_ttfb_ms,
-       COUNT(*) FILTER (WHERE rag_artifact_id IS NOT NULL)::int       AS rag_total_requests,
+       COUNT(*) FILTER (WHERE knowledge_base_id IS NOT NULL)::int       AS rag_total_requests,
        COALESCE(
-         COUNT(*) FILTER (WHERE rag_artifact_id IS NOT NULL AND rag_stage_failed IS NOT NULL)::float
-           / NULLIF(COUNT(*) FILTER (WHERE rag_artifact_id IS NOT NULL), 0),
+         COUNT(*) FILTER (WHERE knowledge_base_id IS NOT NULL AND rag_stage_failed IS NOT NULL)::float
+           / NULLIF(COUNT(*) FILTER (WHERE knowledge_base_id IS NOT NULL), 0),
          0
        )::float                                                       AS rag_failure_rate,
-       COALESCE(AVG(rag_retrieval_ms) FILTER (WHERE rag_artifact_id IS NOT NULL), 0)::float AS avg_retrieval_ms,
-       COALESCE(AVG(rag_chunks_retrieved) FILTER (WHERE rag_artifact_id IS NOT NULL), 0)::float AS avg_chunks_retrieved,
+       COALESCE(AVG(rag_retrieval_latency_ms) FILTER (WHERE knowledge_base_id IS NOT NULL), 0)::float AS avg_retrieval_ms,
+       COALESCE(AVG(retrieved_chunk_count) FILTER (WHERE knowledge_base_id IS NOT NULL), 0)::float AS avg_chunks_retrieved,
        COALESCE(
-         COUNT(*) FILTER (WHERE rag_fallback_to_no_rag = true)::float
-           / NULLIF(COUNT(*) FILTER (WHERE rag_artifact_id IS NOT NULL), 0),
+         COUNT(*) FILTER (WHERE fallback_to_no_rag = true)::float
+           / NULLIF(COUNT(*) FILTER (WHERE knowledge_base_id IS NOT NULL), 0),
          0
        )::float                                                       AS rag_fallback_rate
      FROM traces
@@ -204,17 +204,17 @@ export async function getAdminAnalyticsSummary(
        )::float                                                       AS error_rate,
        COALESCE(AVG(gateway_overhead_ms), 0)::float                  AS avg_overhead_ms,
        COALESCE(AVG(ttfb_ms), 0)::float                              AS avg_ttfb_ms,
-       COUNT(*) FILTER (WHERE rag_artifact_id IS NOT NULL)::int       AS rag_total_requests,
+       COUNT(*) FILTER (WHERE knowledge_base_id IS NOT NULL)::int       AS rag_total_requests,
        COALESCE(
-         COUNT(*) FILTER (WHERE rag_artifact_id IS NOT NULL AND rag_stage_failed IS NOT NULL)::float
-           / NULLIF(COUNT(*) FILTER (WHERE rag_artifact_id IS NOT NULL), 0),
+         COUNT(*) FILTER (WHERE knowledge_base_id IS NOT NULL AND rag_stage_failed IS NOT NULL)::float
+           / NULLIF(COUNT(*) FILTER (WHERE knowledge_base_id IS NOT NULL), 0),
          0
        )::float                                                       AS rag_failure_rate,
-       COALESCE(AVG(rag_retrieval_ms) FILTER (WHERE rag_artifact_id IS NOT NULL), 0)::float AS avg_retrieval_ms,
-       COALESCE(AVG(rag_chunks_retrieved) FILTER (WHERE rag_artifact_id IS NOT NULL), 0)::float AS avg_chunks_retrieved,
+       COALESCE(AVG(rag_retrieval_latency_ms) FILTER (WHERE knowledge_base_id IS NOT NULL), 0)::float AS avg_retrieval_ms,
+       COALESCE(AVG(retrieved_chunk_count) FILTER (WHERE knowledge_base_id IS NOT NULL), 0)::float AS avg_chunks_retrieved,
        COALESCE(
-         COUNT(*) FILTER (WHERE rag_fallback_to_no_rag = true)::float
-           / NULLIF(COUNT(*) FILTER (WHERE rag_artifact_id IS NOT NULL), 0),
+         COUNT(*) FILTER (WHERE fallback_to_no_rag = true)::float
+           / NULLIF(COUNT(*) FILTER (WHERE knowledge_base_id IS NOT NULL), 0),
          0
        )::float                                                       AS rag_fallback_rate
      FROM traces
@@ -252,13 +252,14 @@ export async function getAdminTimeseriesMetrics(
   windowHours = 24,
   bucketMinutes = 60,
 ): Promise<TimeseriesBucket[]> {
-  const params: unknown[] = [windowHours, bucketMinutes];
+  const bucketSeconds = bucketMinutes * 60;
+  const params: unknown[] = [windowHours];
   const tenantFilter = tenantId ? `AND tenant_id = $${params.push(tenantId)}` : '';
 
   const result = await query(
     `SELECT
        to_timestamp(
-         floor(extract(epoch from created_at) / ($2 * 60)) * ($2 * 60)
+         floor(extract(epoch from created_at) / ${bucketSeconds}) * ${bucketSeconds}
        )                                                            AS bucket,
        COUNT(*)::int                                                AS requests,
        COALESCE(SUM(total_tokens), 0)::bigint                      AS tokens,
@@ -301,12 +302,11 @@ export async function getTimeseriesMetrics(
   bucketMinutes = 60,
   rollup = false,
 ): Promise<TimeseriesBucket[]> {
+  const bucketSeconds = bucketMinutes * 60;
   const sql = rollup
     ? `${SUBTENANT_CTE}
      SELECT
-       to_timestamp(
-         floor(extract(epoch from created_at) / ($3 * 60)) * ($3 * 60)
-       )                                                            AS bucket,
+       to_timestamp(floor(extract(epoch from created_at) / ${bucketSeconds}) * ${bucketSeconds}) AS bucket,
        COUNT(*)::int                                                AS requests,
        COALESCE(SUM(total_tokens), 0)::bigint                      AS tokens,
        COALESCE(SUM(${COST_EXPR}), 0)::float                      AS cost_usd,
@@ -324,9 +324,7 @@ export async function getTimeseriesMetrics(
      GROUP BY 1
      ORDER BY 1 ASC`
     : `SELECT
-       to_timestamp(
-         floor(extract(epoch from created_at) / ($3 * 60)) * ($3 * 60)
-       )                                                            AS bucket,
+       to_timestamp(floor(extract(epoch from created_at) / ${bucketSeconds}) * ${bucketSeconds}) AS bucket,
        COUNT(*)::int                                                AS requests,
        COALESCE(SUM(total_tokens), 0)::bigint                      AS tokens,
        COALESCE(SUM(${COST_EXPR}), 0)::float                      AS cost_usd,
@@ -344,7 +342,7 @@ export async function getTimeseriesMetrics(
      GROUP BY 1
      ORDER BY 1 ASC`;
 
-  const result = await query(sql, [tenantId, windowHours, bucketMinutes]);
+  const result = await query(sql, [tenantId, windowHours]);
 
   return result.rows.map((row) => ({
     bucket:        new Date(row.bucket),

@@ -9,7 +9,20 @@ export class PortalService {
 
   private async rawQuery<T extends object = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<{ rows: T[] }> {
     const knex = (this.em as any).getKnex();
-    const result = await knex.raw(sql, params);
+    // Convert PostgreSQL placeholders ($1, $2, etc.) to Knex placeholders (?)
+    // But only outside of quoted strings to avoid replacing '$2' in expressions like "'$2 hours'"
+    let convertedSql = sql;
+    for (let i = params.length; i >= 1; i--) {
+      // Match $i that's NOT inside single quotes
+      // This is a simplified approach - splits by quotes and only replaces in non-quoted parts
+      const parts = convertedSql.split("'");
+      for (let j = 0; j < parts.length; j += 2) {
+        // Only replace in parts that are outside quotes (even indices)
+        parts[j] = parts[j].replace(new RegExp(`\\$${i}\\b`, 'g'), '?');
+      }
+      convertedSql = parts.join("'");
+    }
+    const result = await knex.raw(convertedSql, params);
     return { rows: result.rows as T[] };
   }
 

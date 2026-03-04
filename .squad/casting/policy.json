@@ -1,0 +1,40 @@
+{
+  "universe_allowlist": [
+    "the-usual-suspects",
+    "blade-runner",
+    "alien",
+    "dark-knight",
+    "lord-of-the-rings",
+    "matrix",
+    "star-wars-ot",
+    "office-space",
+    "fight-club",
+    "social-network",
+    "mad-max-fury-road",
+    "ex-machina",
+    "her",
+    "tron-legacy",
+    "westworld-s1",
+    "black-mirror",
+    "mr-robot",
+    "silicon-valley",
+    "halt-and-catch-fire",
+    "devs",
+    "severance",
+    "andor",
+    "succession",
+    "better-call-saul",
+    "the-wire",
+    "sopranos",
+    "breaking-bad",
+    "mad-men",
+    "the-americans",
+    "true-detective-s1",
+    "fargo"
+  ],
+  "capacity_per_universe": {
+    "the-usual-suspects": 6,
+    "blade-runner": 8,
+    "alien": 10
+  }
+}

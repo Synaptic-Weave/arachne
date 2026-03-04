@@ -435,5 +435,33 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
     const models = await getAdminModelBreakdown(tenant_id, windowHours);
     return reply.send({ models });
   });
+
+  // GET /v1/admin/beta/signups — List all beta signups
+  fastify.get('/v1/admin/beta/signups', authOpts, async (request, reply) => {
+    const signups = await adminService.listBetaSignups();
+    return reply.send({ signups });
+  });
+
+  // POST /v1/admin/beta/approve/:id — Approve a beta signup and generate invite code
+  fastify.post<{ Params: { id: string } }>(
+    '/v1/admin/beta/approve/:id',
+    authOpts,
+    async (request, reply) => {
+      const { id } = request.params;
+      const adminId = request.adminUser?.sub;
+
+      if (!adminId) {
+        return reply.code(401).send({ error: 'Unauthorized' });
+      }
+
+      const signup = await adminService.approveBetaSignup(id, adminId);
+
+      if (!signup) {
+        return reply.code(404).send({ error: 'Beta signup not found' });
+      }
+
+      return reply.send(signup);
+    }
+  );
 }
 

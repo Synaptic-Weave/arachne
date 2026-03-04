@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { Collection } from '@mikro-orm/core';
 import type { Tenant } from './Tenant.js';
 import { ApiKey } from './ApiKey.js';
 
@@ -22,7 +23,7 @@ export class Agent {
   createdAt!: Date;
   updatedAt!: Date | null;
 
-  apiKeys: ApiKey[] = [];
+  apiKeys = new Collection<ApiKey>(this);
 
   constructor(tenant: Tenant, name: string, config?: Partial<Agent>) {
     this.id = randomUUID();
@@ -45,12 +46,11 @@ export class Agent {
     this.conversationSummaryModel = config?.conversationSummaryModel ?? null;
     this.createdAt = new Date();
     this.updatedAt = null;
-    this.apiKeys = [];
   }
 
   createApiKey(name: string): { entity: ApiKey; rawKey: string } {
     const apiKey = new ApiKey(this, name);
-    this.apiKeys.push(apiKey);
+    this.apiKeys.add(apiKey);
     return { entity: apiKey, rawKey: apiKey.rawKey };
   }
 

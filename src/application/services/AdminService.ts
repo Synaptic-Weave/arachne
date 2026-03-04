@@ -5,6 +5,11 @@
 import { scrypt, timingSafeEqual, randomBytes } from 'node:crypto';
 import { promisify } from 'node:util';
 import type { EntityManager } from '@mikro-orm/core';
+import { Tenant } from '../../domain/entities/Tenant.js';
+import { ApiKey } from '../../domain/entities/ApiKey.js';
+import { Trace } from '../../domain/entities/Trace.js';
+import { AdminUser } from '../../domain/entities/AdminUser.js';
+import { BetaSignup } from '../../domain/entities/BetaSignup.js';
 
 const scryptAsync = promisify(scrypt);
 
@@ -68,9 +73,22 @@ export interface ListTracesFilters {
   cursor?: string;
 }
 
+export interface BetaSignupRow {
+  id: string;
+  email: string;
+  name: string | null;
+  inviteCode: string | null;
+  approvedAt: string | null;
+  approvedByAdminId: string | null;
+  inviteUsedAt: string | null;
+  createdAt: string;
+  status: 'pending' | 'approved' | 'used';
+}
+
 export class AdminService {
   constructor(private readonly em: EntityManager) {}
 
+  // rawQuery retained for analytics only
   private async rawQuery<T extends object>(sql: string, params: unknown[] = []): Promise<{ rows: T[] }> {
     const knex = (this.em as any).getKnex();
     const result = await knex.raw(sql, params);
@@ -83,66 +101,65 @@ export class AdminService {
     username: string,
     password: string,
   ): Promise<{ id: string; username: string; mustChangePassword: boolean } | null> {
-    const result = await this.rawQuery<{
-      id: string;
-      username: string;
-      password_hash: string;
-      must_change_password: boolean;
-    }>('SELECT id, username, password_hash, must_change_password FROM admin_users WHERE username = $1', [username]);
-
-    if (result.rows.length === 0) return null;
-
-    const adminUser = result.rows[0];
-    const isValid = await verifyPassword(password, adminUser.password_hash);
+    const adminUser = await this.em.getRepository(AdminUser).findOne({ username });
+    if (!adminUser) return null;
+    const isValid = await verifyPassword(password, adminUser.passwordHash);
     if (!isValid) return null;
 
-    return { id: adminUser.id, username: adminUser.username, mustChangePassword: adminUser.must_change_password };
+    return { id: adminUser.id, username: adminUser.username, mustChangePassword: adminUser.mustChangePassword };
   }
 
   async updateAdminLastLogin(id: string): Promise<void> {
-    await this.rawQuery('UPDATE admin_users SET last_login = now() WHERE id = $1', [id]);
+    await this.em.getRepository(AdminUser).nativeUpdate({ id }, { lastLogin: new Date() });
   }
 
   async changeAdminPassword(id: string, currentPassword: string, newPassword: string): Promise<{ success: boolean; error?: string }> {
-    const result = await this.rawQuery<{ password_hash: string }>(
-      'SELECT password_hash FROM admin_users WHERE id = $1',
-      [id]
-    );
-
-    if (result.rows.length === 0) {
+    const adminUser = await this.em.getRepository(AdminUser).findOne({ id });
+    if (!adminUser) {
       return { success: false, error: 'admin_not_found' };
     }
-
-    const isValid = await verifyPassword(currentPassword, result.rows[0].password_hash);
+    const isValid = await verifyPassword(currentPassword, adminUser.passwordHash);
     if (!isValid) {
       return { success: false, error: 'invalid_current_password' };
     }
-
     const newHash = await hashPassword(newPassword);
-    await this.rawQuery(
-      'UPDATE admin_users SET password_hash = $1, must_change_password = false WHERE id = $2',
-      [newHash, id]
-    );
-
+    adminUser.passwordHash = newHash;
+    adminUser.mustChangePassword = false;
+    await this.em.persistAndFlush(adminUser);
     return { success: true };
   }
 
   async forceChangeAdminPassword(id: string, newPassword: string): Promise<void> {
+    const adminUser = await this.em.getRepository(AdminUser).findOne({ id });
+    if (!adminUser) return;
     const newHash = await hashPassword(newPassword);
-    await this.rawQuery(
-      'UPDATE admin_users SET password_hash = $1, must_change_password = false WHERE id = $2',
-      [newHash, id]
-    );
+    adminUser.passwordHash = newHash;
+    adminUser.mustChangePassword = false;
+    await this.em.persistAndFlush(adminUser);
   }
 
   // ── Tenants ───────────────────────────────────────────────────────────────
 
   async createTenant(name: string): Promise<TenantRow> {
-    const result = await this.rawQuery<TenantRow>(
-      'INSERT INTO tenants (name) VALUES ($1) RETURNING id, name, status, created_at, updated_at',
-      [name],
-    );
-    return result.rows[0];
+    const repo = this.em.getRepository(Tenant);
+    const now = new Date();
+    const tenant = repo.create({
+      name,
+      status: 'active',
+      createdAt: now,
+      updatedAt: now,
+      agents: [],
+      members: [],
+      invites: [],
+    });
+    await this.em.persistAndFlush(tenant);
+    return {
+      id: tenant.id,
+      name: tenant.name,
+      status: tenant.status,
+      created_at: tenant.createdAt.toISOString(),
+      updated_at: (tenant.updatedAt ?? now).toISOString(),
+    };
   }
 
   async listTenants(
@@ -150,101 +167,94 @@ export class AdminService {
   ): Promise<{ tenants: TenantRow[]; total: number }> {
     const { limit, offset, status } = filters;
 
-    let sql = 'SELECT id, name, status, created_at, updated_at FROM tenants';
-    const params: unknown[] = [];
-
-    if (status) {
-      sql += ' WHERE status = $1';
-      params.push(status);
-    }
-
-    sql += ` ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
-    params.push(limit, offset);
-
-    const [tenants, countResult] = await Promise.all([
-      this.rawQuery<TenantRow>(sql, params),
-      this.rawQuery<{ count: string }>(
-        status ? 'SELECT COUNT(*) FROM tenants WHERE status = $1' : 'SELECT COUNT(*) FROM tenants',
-        status ? [status] : [],
-      ),
+    const repo = this.em.getRepository(Tenant);
+    const where: any = {};
+    if (status) where.status = status;
+    const [tenants, total] = await Promise.all([
+      repo.find(where, { orderBy: { createdAt: 'DESC' }, limit, offset }),
+      repo.count(where),
     ]);
-
     return {
-      tenants: tenants.rows,
-      total: parseInt(countResult.rows[0].count, 10),
+      tenants: tenants.map(t => ({
+        id: t.id,
+        name: t.name,
+        status: t.status,
+        created_at: t.createdAt.toISOString(),
+        updated_at: (t.updatedAt ?? t.createdAt).toISOString(),
+      })),
+      total,
     };
   }
 
   async getTenant(id: string): Promise<TenantDetailRow | null> {
-    const result = await this.rawQuery<TenantDetailRow>(
-      `SELECT
-        t.id,
-        t.name,
-        t.status,
-        t.provider_config,
-        t.created_at,
-        t.updated_at,
-        COUNT(ak.id) AS api_key_count
-       FROM tenants t
-       LEFT JOIN api_keys ak ON ak.tenant_id = t.id
-       WHERE t.id = $1
-       GROUP BY t.id`,
-      [id],
-    );
-    return result.rows[0] ?? null;
+    const repo = this.em.getRepository(Tenant);
+    const tenant = await repo.findOne({ id });
+    if (!tenant) return null;
+    const apiKeyRepo = this.em.getRepository(ApiKey);
+    const apiKeyCount = await apiKeyRepo.count({ tenant: tenant });
+    return {
+      id: tenant.id,
+      name: tenant.name,
+      status: tenant.status,
+      created_at: tenant.createdAt.toISOString(),
+      updated_at: (tenant.updatedAt ?? tenant.createdAt).toISOString(),
+      provider_config: tenant.providerConfig,
+      api_key_count: String(apiKeyCount),
+    };
   }
 
   async updateTenant(
     id: string,
     fields: { name?: string; status?: string },
   ): Promise<TenantRow | null> {
-    const updates: string[] = [];
-    const params: unknown[] = [];
-    let paramIndex = 1;
-
-    if (fields.name) {
-      updates.push(`name = $${paramIndex++}`);
-      params.push(fields.name.trim());
-    }
-    if (fields.status) {
-      updates.push(`status = $${paramIndex++}`);
-      params.push(fields.status);
-    }
-    updates.push(`updated_at = now()`);
-    params.push(id);
-
-    const result = await this.rawQuery<TenantRow>(
-      `UPDATE tenants SET ${updates.join(', ')} WHERE id = $${paramIndex} RETURNING id, name, status, created_at, updated_at`,
-      params,
-    );
-    return result.rows[0] ?? null;
+    const repo = this.em.getRepository(Tenant);
+    const tenant = await repo.findOne({ id });
+    if (!tenant) return null;
+    if (fields.name) tenant.name = fields.name.trim();
+    if (fields.status) tenant.status = fields.status;
+    tenant.updatedAt = new Date();
+    await this.em.persistAndFlush(tenant);
+    return {
+      id: tenant.id,
+      name: tenant.name,
+      status: tenant.status,
+      created_at: tenant.createdAt.toISOString(),
+      updated_at: (tenant.updatedAt ?? tenant.createdAt).toISOString(),
+    };
   }
 
   async deleteTenant(id: string): Promise<boolean> {
-    const result = await this.rawQuery('DELETE FROM tenants WHERE id = $1 RETURNING id', [id]);
-    return result.rows.length > 0;
+    const repo = this.em.getRepository(Tenant);
+    const tenant = await repo.findOne({ id });
+    if (!tenant) return false;
+    await this.em.removeAndFlush(tenant);
+    return true;
   }
 
   // ── Provider config ────────────────────────────────────────────────────────
 
   async tenantExists(id: string): Promise<boolean> {
-    const result = await this.rawQuery('SELECT id FROM tenants WHERE id = $1', [id]);
-    return result.rows.length > 0;
+    const repo = this.em.getRepository(Tenant);
+    return !!(await repo.findOne({ id }));
   }
 
   async setProviderConfig(id: string, providerConfig: object): Promise<void> {
-    await this.rawQuery(
-      'UPDATE tenants SET provider_config = $1, updated_at = now() WHERE id = $2',
-      [JSON.stringify(providerConfig), id],
-    );
+    const repo = this.em.getRepository(Tenant);
+    const tenant = await repo.findOne({ id });
+    if (!tenant) return;
+    tenant.providerConfig = providerConfig;
+    tenant.updatedAt = new Date();
+    await this.em.persistAndFlush(tenant);
   }
 
   async clearProviderConfig(id: string): Promise<boolean> {
-    const result = await this.rawQuery(
-      'UPDATE tenants SET provider_config = NULL, updated_at = now() WHERE id = $1 RETURNING id',
-      [id],
-    );
-    return result.rows.length > 0;
+    const repo = this.em.getRepository(Tenant);
+    const tenant = await repo.findOne({ id });
+    if (!tenant) return false;
+    tenant.providerConfig = null;
+    tenant.updatedAt = new Date();
+    await this.em.persistAndFlush(tenant);
+    return true;
   }
 
   // ── API keys ───────────────────────────────────────────────────────────────
@@ -256,82 +266,150 @@ export class AdminService {
     keyPrefix: string,
     keyHash: string,
   ): Promise<{ id: string; name: string; key_prefix: string; status: string; created_at: string }> {
-    const result = await this.rawQuery<{
-      id: string;
-      name: string;
-      key_prefix: string;
-      status: string;
-      created_at: string;
-    }>(
-      `INSERT INTO api_keys (tenant_id, name, key_prefix, key_hash)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, name, key_prefix, status, created_at`,
-      [tenantId, name, keyPrefix, keyHash],
-    );
-    return result.rows[0];
+    const repo = this.em.getRepository(ApiKey);
+    const tenant = await this.em.getRepository(Tenant).findOne({ id: tenantId }, { populate: ['agents'] });
+    if (!tenant) throw new Error('Tenant not found');
+    // Find the Default agent for this tenant
+    const agent = tenant.agents.getItems().find(a => a.name === 'Default');
+    if (!agent) throw new Error('Default agent not found for tenant');
+    const now = new Date();
+    const apiKey = repo.create({
+      tenant,
+      agent,
+      name,
+      keyPrefix,
+      keyHash,
+      status: 'active',
+      createdAt: now,
+      rawKey,
+    });
+    await this.em.persistAndFlush(apiKey);
+    return {
+      id: apiKey.id,
+      name: apiKey.name,
+      key_prefix: apiKey.keyPrefix,
+      status: apiKey.status,
+      created_at: apiKey.createdAt.toISOString(),
+    };
   }
 
   async listApiKeys(tenantId: string): Promise<ApiKeyRow[]> {
-    const result = await this.rawQuery<ApiKeyRow>(
-      `SELECT id, name, key_prefix, status, created_at, revoked_at
-       FROM api_keys
-       WHERE tenant_id = $1
-       ORDER BY created_at DESC`,
-      [tenantId],
-    );
-    return result.rows;
+    const repo = this.em.getRepository(ApiKey);
+    const tenant = await this.em.getRepository(Tenant).findOne({ id: tenantId });
+    if (!tenant) return [];
+    const apiKeys = await repo.find({ tenant }, { orderBy: { createdAt: 'DESC' } });
+    return apiKeys.map(k => ({
+      id: k.id,
+      name: k.name,
+      key_prefix: k.keyPrefix,
+      status: k.status,
+      created_at: k.createdAt.toISOString(),
+      revoked_at: k.revokedAt ? k.revokedAt.toISOString() : null,
+    }));
   }
 
   async getApiKeyHash(keyId: string, tenantId: string): Promise<string | null> {
-    const result = await this.rawQuery<{ key_hash: string }>(
-      'SELECT key_hash FROM api_keys WHERE id = $1 AND tenant_id = $2',
-      [keyId, tenantId],
-    );
-    return result.rows[0]?.key_hash ?? null;
+    const repo = this.em.getRepository(ApiKey);
+    const tenant = await this.em.getRepository(Tenant).findOne({ id: tenantId });
+    if (!tenant) return null;
+    const apiKey = await repo.findOne({ id: keyId, tenant });
+    return apiKey?.keyHash ?? null;
   }
 
   async hardDeleteApiKey(keyId: string, tenantId: string): Promise<void> {
-    await this.rawQuery('DELETE FROM api_keys WHERE id = $1 AND tenant_id = $2', [
-      keyId,
-      tenantId,
-    ]);
+    const repo = this.em.getRepository(ApiKey);
+    const tenant = await this.em.getRepository(Tenant).findOne({ id: tenantId });
+    if (!tenant) return;
+    const apiKey = await repo.findOne({ id: keyId, tenant });
+    if (apiKey) await this.em.removeAndFlush(apiKey);
   }
 
   async revokeApiKey(keyId: string, tenantId: string): Promise<string | null> {
-    const result = await this.rawQuery<{ key_hash: string }>(
-      `UPDATE api_keys
-       SET status = 'revoked', revoked_at = now()
-       WHERE id = $1 AND tenant_id = $2
-       RETURNING key_hash`,
-      [keyId, tenantId],
-    );
-    return result.rows[0]?.key_hash ?? null;
+    const repo = this.em.getRepository(ApiKey);
+    const tenant = await this.em.getRepository(Tenant).findOne({ id: tenantId });
+    if (!tenant) return null;
+    const apiKey = await repo.findOne({ id: keyId, tenant });
+    if (!apiKey) return null;
+    apiKey.status = 'revoked';
+    apiKey.revokedAt = new Date();
+    await this.em.persistAndFlush(apiKey);
+    return apiKey.keyHash;
   }
 
   // ── Traces ─────────────────────────────────────────────────────────────────
 
   async listTraces(filters: ListTracesFilters): Promise<TraceRow[]> {
     const { limit, tenant_id, cursor } = filters;
-    const params: unknown[] = [limit];
-    let whereClause = '';
-
-    if (tenant_id && cursor) {
-      whereClause = `WHERE tenant_id = $${params.push(tenant_id)} AND created_at < $${params.push(cursor)}::timestamptz`;
-    } else if (tenant_id) {
-      whereClause = `WHERE tenant_id = $${params.push(tenant_id)}`;
-    } else if (cursor) {
-      whereClause = `WHERE created_at < $${params.push(cursor)}::timestamptz`;
+    const repo = this.em.getRepository(Trace);
+    const where: any = {};
+    if (tenant_id) {
+      const tenant = await this.em.getRepository(Tenant).findOne({ id: tenant_id });
+      if (tenant) where.tenant = tenant;
     }
+    if (cursor) where.createdAt = { $lt: new Date(cursor) };
+    const traces = await repo.find(where, { orderBy: { createdAt: 'DESC' }, limit });
+    return traces.map(t => ({
+      id: t.id,
+      tenant_id: t.tenant?.id ?? '',
+      model: t.model,
+      provider: t.provider,
+      status_code: t.statusCode ?? 0,
+      latency_ms: t.latencyMs ?? 0,
+      prompt_tokens: t.promptTokens ?? 0,
+      completion_tokens: t.completionTokens ?? 0,
+      ttfb_ms: t.ttfbMs ?? 0,
+      gateway_overhead_ms: t.gatewayOverheadMs ?? 0,
+      created_at: t.createdAt,
+    }));
+  }
 
-    const result = await this.rawQuery<TraceRow>(
-      `SELECT id, tenant_id, model, provider, status_code, latency_ms,
-              prompt_tokens, completion_tokens, ttfb_ms, gateway_overhead_ms, created_at
-       FROM   traces
-       ${whereClause}
-       ORDER  BY created_at DESC
-       LIMIT  $1`,
-      params,
-    );
-    return result.rows;
+  // ── Beta Signups ───────────────────────────────────────────────────────────
+
+  async listBetaSignups(): Promise<BetaSignupRow[]> {
+    const repo = this.em.getRepository(BetaSignup);
+    const signups = await repo.find({}, { orderBy: { createdAt: 'DESC' } });
+    return signups.map(s => {
+      let status: 'pending' | 'approved' | 'used';
+      if (s.inviteUsedAt) {
+        status = 'used';
+      } else if (s.approvedAt) {
+        status = 'approved';
+      } else {
+        status = 'pending';
+      }
+      return {
+        id: s.id,
+        email: s.email,
+        name: s.name,
+        inviteCode: s.inviteCode,
+        approvedAt: s.approvedAt ? s.approvedAt.toISOString() : null,
+        approvedByAdminId: s.approvedByAdminId,
+        inviteUsedAt: s.inviteUsedAt ? s.inviteUsedAt.toISOString() : null,
+        createdAt: s.createdAt.toISOString(),
+        status,
+      };
+    });
+  }
+
+  async approveBetaSignup(signupId: string, adminId: string): Promise<BetaSignupRow | null> {
+    const repo = this.em.getRepository(BetaSignup);
+    const signup = await repo.findOne({ id: signupId });
+    if (!signup) return null;
+
+    // Use the domain method to approve
+    signup.approve(adminId);
+    await this.em.persistAndFlush(signup);
+
+    return {
+      id: signup.id,
+      email: signup.email,
+      name: signup.name,
+      inviteCode: signup.inviteCode,
+      approvedAt: signup.approvedAt ? signup.approvedAt.toISOString() : null,
+      approvedByAdminId: signup.approvedByAdminId,
+      inviteUsedAt: signup.inviteUsedAt ? signup.inviteUsedAt.toISOString() : null,
+      createdAt: signup.createdAt.toISOString(),
+      status: 'approved',
+    };
   }
 }

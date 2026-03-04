@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git rev-list:*)",
+      "Bash(git merge:*)",
+      "Bash(git stash:*)",
+      "Bash(node dist/index.js:*)",
+      "Bash(node cli/dist/index.js:*)",
+      "Bash(node:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

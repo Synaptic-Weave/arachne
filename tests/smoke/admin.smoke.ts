@@ -40,7 +40,7 @@ describe('Admin Dashboard smoke tests', () => {
     await adminLogin(page);
     await screenshotIfDocsMode(page, 'admin-login', 'Admin dashboard after login', 'Authentication');
     const url = page.url();
-    expect(url).toMatch(/\/admin/);
+    expect(url).toMatch(/\/dashboard\/admin/);
   });
 
   // -------------------------------------------------------------------------

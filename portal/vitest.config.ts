@@ -5,6 +5,7 @@ import path from 'path';
 export default defineConfig({
   plugins: [react()],
   test: {
+    name: 'loom-portal',
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test-setup.ts'],
@@ -12,7 +13,13 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'html'],
       include: ['src/components/**', 'src/pages/**'],
-      exclude: ['**/__mocks__/**', '**/dist/**'],
+      exclude: [
+        '**/__mocks__/**',
+        '**/dist/**',
+        '**/build/**',
+        '**/coverage/**',
+        '**/*.d.ts'
+      ],
     },
   },
   resolve: {

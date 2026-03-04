@@ -18,7 +18,7 @@ export const TenantSchema = new EntitySchema<Tenant>({
     mcpEndpoints: { type: 'json', fieldName: 'mcp_endpoints', nullable: true },
     status: { type: 'string', columnType: 'varchar(20)', default: 'active' },
     availableModels: { type: 'json', fieldName: 'available_models', nullable: true },
-    updatedAt: { type: 'Date', fieldName: 'updated_at', nullable: true, onUpdate: () => new Date() },
+    updatedAt: { type: 'Date', fieldName: 'updated_at', onCreate: () => new Date(), onUpdate: () => new Date() },
     createdAt: { type: 'Date', fieldName: 'created_at', onCreate: () => new Date() },
     agents: { kind: '1:m', entity: () => Agent, mappedBy: 'tenant', eager: false, cascade: [Cascade.PERSIST] },
     members: { kind: '1:m', entity: () => TenantMembership, mappedBy: 'tenant', eager: false, cascade: [Cascade.PERSIST] },
