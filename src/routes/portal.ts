@@ -11,6 +11,7 @@ import { PortalService } from '../application/services/PortalService.js';
 import { ConversationManagementService } from '../application/services/ConversationManagementService.js';
 import { UserManagementService } from '../application/services/UserManagementService.js';
 import { TenantManagementService } from '../application/services/TenantManagementService.js';
+import { isSignupsEnabled } from '../config.js';
 import { validateOrgSlug } from '../utils/slug.js';
 import { RegistryService } from '../services/RegistryService.js';
 import { ProvisionService } from '../services/ProvisionService.js';
@@ -118,6 +119,11 @@ export function registerPortalRoutes(
         return reply.code(500).send({ error: 'Signup failed' });
       }
     } else {
+      // Check if self-service signups are enabled
+      if (!isSignupsEnabled()) {
+        return reply.code(403).send({ error: 'Signups are currently disabled. Please contact support for an invite.' });
+      }
+
       if (!tenantName || typeof tenantName !== 'string' || tenantName.trim().length === 0) {
         return reply.code(400).send({ error: 'tenantName is required' });
       }

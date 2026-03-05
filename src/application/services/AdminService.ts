@@ -10,6 +10,7 @@ import { ApiKey } from '../../domain/entities/ApiKey.js';
 import { Trace } from '../../domain/entities/Trace.js';
 import { AdminUser } from '../../domain/entities/AdminUser.js';
 import { BetaSignup } from '../../domain/entities/BetaSignup.js';
+import { Settings } from '../../domain/entities/Settings.js';
 
 const scryptAsync = promisify(scrypt);
 
@@ -83,6 +84,12 @@ export interface BetaSignupRow {
   inviteUsedAt: string | null;
   createdAt: string;
   status: 'pending' | 'approved' | 'used';
+}
+
+export interface SettingsRow {
+  signupsEnabled: boolean;
+  updatedAt: string;
+  updatedByAdminId: string | null;
 }
 
 export class AdminService {
@@ -411,5 +418,51 @@ export class AdminService {
       createdAt: signup.createdAt.toISOString(),
       status: 'approved',
     };
+  }
+
+  // ── Settings ────────────────────────────────────────────────────────────────
+
+  async getSettings(): Promise<SettingsRow> {
+    const repo = this.em.getRepository(Settings);
+    let settings = await repo.findOne({ id: 1 });
+
+    // If settings don't exist, create them with defaults
+    if (!settings) {
+      settings = new Settings();
+      // Initialize from environment variable if set
+      if (process.env.SIGNUPS_ENABLED === 'false') {
+        settings.signupsEnabled = false;
+      }
+      await this.em.persistAndFlush(settings);
+    }
+
+    return {
+      signupsEnabled: settings.signupsEnabled,
+      updatedAt: settings.updatedAt.toISOString(),
+      updatedByAdminId: settings.updatedByAdminId,
+    };
+  }
+
+  async updateSettings(signupsEnabled: boolean, adminId: string): Promise<SettingsRow> {
+    const repo = this.em.getRepository(Settings);
+    let settings = await repo.findOne({ id: 1 });
+
+    if (!settings) {
+      settings = new Settings();
+    }
+
+    settings.updateSignupsEnabled(signupsEnabled, adminId);
+    await this.em.persistAndFlush(settings);
+
+    return {
+      signupsEnabled: settings.signupsEnabled,
+      updatedAt: settings.updatedAt.toISOString(),
+      updatedByAdminId: settings.updatedByAdminId,
+    };
+  }
+
+  async isSignupsEnabled(): Promise<boolean> {
+    const settings = await this.getSettings();
+    return settings.signupsEnabled;
   }
 }

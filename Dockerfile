@@ -20,6 +20,8 @@ COPY shared/ ./shared/
 # Build TypeScript to JavaScript
 RUN npm run build
 
+RUN npm run migrate:up
+
 # Build dashboard
 WORKDIR /app/dashboard
 COPY dashboard/package*.json ./
