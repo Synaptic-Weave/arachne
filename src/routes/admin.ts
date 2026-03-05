@@ -463,5 +463,33 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
       return reply.send(signup);
     }
   );
+
+  // GET /v1/admin/settings — Get current settings
+  fastify.get('/v1/admin/settings', authOpts, async (request, reply) => {
+    const settings = await adminService.getSettings();
+    return reply.send(settings);
+  });
+
+  // PUT /v1/admin/settings — Update settings
+  fastify.put<{ Body: { signupsEnabled?: boolean } }>(
+    '/v1/admin/settings',
+    authOpts,
+    async (request, reply) => {
+      const adminId = request.adminUser?.sub;
+
+      if (!adminId) {
+        return reply.code(401).send({ error: 'Unauthorized' });
+      }
+
+      const { signupsEnabled } = request.body;
+
+      if (typeof signupsEnabled !== 'boolean') {
+        return reply.code(400).send({ error: 'signupsEnabled must be a boolean' });
+      }
+
+      const settings = await adminService.updateSettings(signupsEnabled, adminId);
+      return reply.send(settings);
+    }
+  );
 }
 

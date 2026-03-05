@@ -20,8 +20,6 @@ COPY shared/ ./shared/
 # Build TypeScript to JavaScript
 RUN npm run build
 
-RUN npm run migrate:up
-
 # Build dashboard
 WORKDIR /app/dashboard
 COPY dashboard/package*.json ./
@@ -49,8 +47,13 @@ COPY --from=builder /app/package.json ./
 COPY --from=builder /app/dashboard/dist ./dashboard/dist
 COPY --from=builder /app/portal/dist ./portal/dist
 
+# Copy entrypoint script
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 # Expose gateway port
 EXPOSE 3000
 
-# Start the gateway
+# Set entrypoint to run migrations before starting app
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["node", "dist/index.js"]
