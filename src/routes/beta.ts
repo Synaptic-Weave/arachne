@@ -2,8 +2,24 @@ import type { FastifyInstance } from 'fastify';
 import { UniqueConstraintViolationException } from '@mikro-orm/core';
 import { orm } from '../orm.js';
 import { BetaSignup } from '../domain/entities/BetaSignup.js';
+import { AdminService } from '../application/services/AdminService.js';
 
 export function registerBetaRoutes(fastify: FastifyInstance): void {
+  const adminService = new AdminService(orm.em);
+
+  // ── GET /v1/beta/signups-enabled ──────────────────────────────────────────
+  // Public endpoint to check if self-service signups are enabled
+  fastify.get('/v1/beta/signups-enabled', async (request, reply) => {
+    try {
+      const settings = await adminService.getSettings();
+      return reply.send({ signupsEnabled: settings.signupsEnabled });
+    } catch (err) {
+      fastify.log.error({ err }, 'Failed to fetch signup settings');
+      // Default to disabled if we can't fetch settings
+      return reply.send({ signupsEnabled: false });
+    }
+  });
+
   // ── POST /v1/beta/signup ──────────────────────────────────────────────────
   // Public endpoint — no auth required.
   fastify.post<{

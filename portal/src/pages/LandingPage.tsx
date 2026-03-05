@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '';
 
@@ -8,6 +8,15 @@ export default function LandingPage() {
   const [name, setName] = useState('');
   const [signupState, setSignupState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
+  const [signupsEnabled, setSignupsEnabled] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    // Fetch signup settings on mount
+    fetch(`${API_BASE}/v1/beta/signups-enabled`)
+      .then(res => res.json())
+      .then(data => setSignupsEnabled(data.signupsEnabled ?? false))
+      .catch(() => setSignupsEnabled(false)); // Default to false if fetch fails
+  }, []);
 
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault();
@@ -39,12 +48,21 @@ export default function LandingPage() {
           <Link to="/login" className="text-sm text-gray-400 hover:text-gray-100 transition-colors">
             Sign in
           </Link>
-          <a
-            href="#beta-signup"
-            className="text-sm px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-colors"
-          >
-            Get started free
-          </a>
+          {signupsEnabled ? (
+            <Link
+              to="/signup"
+              className="text-sm px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-colors"
+            >
+              Get started free
+            </Link>
+          ) : (
+            <a
+              href="#beta-signup"
+              className="text-sm px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-colors"
+            >
+              Join the Beta
+            </a>
+          )}
         </div>
       </header>
 
@@ -68,18 +86,37 @@ export default function LandingPage() {
           </p>
 
           <div className="flex items-center justify-center gap-4 pt-2">
-            <a
-              href="#beta-signup"
-              className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-lg transition-colors"
-            >
-              Join the Beta
-            </a>
-            <Link
-              to="/login"
-              className="px-6 py-3 border border-gray-700 hover:border-gray-500 text-gray-300 font-medium rounded-lg transition-colors"
-            >
-              Sign in
-            </Link>
+            {signupsEnabled ? (
+              <>
+                <Link
+                  to="/signup"
+                  className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-lg transition-colors"
+                >
+                  Get Started Free
+                </Link>
+                <Link
+                  to="/login"
+                  className="px-6 py-3 border border-gray-700 hover:border-gray-500 text-gray-300 font-medium rounded-lg transition-colors"
+                >
+                  Sign in
+                </Link>
+              </>
+            ) : (
+              <>
+                <a
+                  href="#beta-signup"
+                  className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-lg transition-colors"
+                >
+                  Join the Beta
+                </a>
+                <Link
+                  to="/login"
+                  className="px-6 py-3 border border-gray-700 hover:border-gray-500 text-gray-300 font-medium rounded-lg transition-colors"
+                >
+                  Sign in
+                </Link>
+              </>
+            )}
           </div>
         </section>
 
@@ -220,45 +257,59 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* Beta signup */}
-        <section id="beta-signup" className="mt-0 w-full max-w-md mx-auto text-center space-y-6 px-8 py-20">
-          <h2 className="text-2xl font-bold text-gray-100">Get early access</h2>
-          <p className="text-gray-400 text-sm">Join the waitlist and we'll reach out when your spot is ready.</p>
+        {/* Beta signup - only show when signups are disabled */}
+        {!signupsEnabled && (
+          <section id="beta-signup" className="mt-0 w-full max-w-md mx-auto text-center space-y-6 px-8 py-20">
+            <h2 className="text-2xl font-bold text-gray-100">Get early access</h2>
+            <p className="text-gray-400 text-sm">Join the waitlist and we'll reach out when your spot is ready.</p>
 
-          {signupState === 'success' ? (
-            <div className="bg-green-900/40 border border-green-700 text-green-300 rounded-xl px-6 py-5 text-sm font-medium">
-              🎉 You're on the list! We'll be in touch soon.
-            </div>
-          ) : (
-            <form onSubmit={handleSignup} className="space-y-3">
-              <input
-                type="text"
-                placeholder="Name (optional)"
-                value={name}
-                onChange={e => setName(e.target.value)}
-                className="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg text-gray-100 placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm"
-              />
-              <input
-                type="email"
-                placeholder="Email address"
-                required
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                className="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg text-gray-100 placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm"
-              />
-              {signupState === 'error' && (
-                <p className="text-red-400 text-xs text-left">{errorMessage}</p>
-              )}
-              <button
-                type="submit"
-                disabled={signupState === 'loading'}
-                className="w-full px-6 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors text-sm"
-              >
-                {signupState === 'loading' ? 'Joining…' : 'Join the Beta Waitlist'}
-              </button>
-            </form>
-          )}
-        </section>
+            {signupState === 'success' ? (
+              <div className="bg-green-900/40 border border-green-700 text-green-300 rounded-xl px-6 py-5 text-sm font-medium">
+                🎉 You're on the list! We'll be in touch soon.
+              </div>
+            ) : (
+              <form onSubmit={handleSignup} className="space-y-3">
+                <input
+                  type="text"
+                  placeholder="Name (optional)"
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  className="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg text-gray-100 placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm"
+                />
+                <input
+                  type="email"
+                  placeholder="Email address"
+                  required
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  className="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg text-gray-100 placeholder-gray-500 focus:outline-none focus:border-indigo-500 text-sm"
+                />
+                {signupState === 'error' && (
+                  <p className="text-red-400 text-xs text-left">{errorMessage}</p>
+                )}
+                <button
+                  type="submit"
+                  disabled={signupState === 'loading'}
+                  className="w-full px-6 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors text-sm"
+                >
+                  {signupState === 'loading' ? 'Joining…' : 'Join the Beta Waitlist'}
+                </button>
+              </form>
+            )}
+          </section>
+        )}
+
+        {/* Invite code link - only show when signups are enabled */}
+        {signupsEnabled && (
+          <section className="w-full max-w-md mx-auto text-center space-y-4 px-8 py-20">
+            <p className="text-gray-400 text-sm">
+              Have an invite code?{' '}
+              <Link to="/signup" className="text-indigo-400 hover:text-indigo-300 underline">
+                Sign up here
+              </Link>
+            </p>
+          </section>
+        )}
       </main>
 
       <footer className="text-center text-xs text-gray-600 py-6 border-t border-gray-800 space-y-1">

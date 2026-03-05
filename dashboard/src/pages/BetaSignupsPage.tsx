@@ -2,11 +2,14 @@ import { useState, useEffect } from 'react';
 import { getBetaSignups, approveBetaSignup, type AdminBetaSignup } from '../utils/adminApi';
 import './BetaSignupsPage.css';
 
+const PORTAL_URL = import.meta.env.VITE_PORTAL_URL || window.location.origin;
+
 function BetaSignupsPage() {
   const [signups, setSignups] = useState<AdminBetaSignup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   useEffect(() => {
     loadSignups();
@@ -48,6 +51,22 @@ function BetaSignupsPage() {
     }
   }
 
+  function getSignupLink(inviteCode: string): string {
+    return `${PORTAL_URL}/signup?invite=${inviteCode}`;
+  }
+
+  async function copyLink(signup: AdminBetaSignup) {
+    if (!signup.inviteCode) return;
+    const link = getSignupLink(signup.inviteCode);
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopiedId(signup.id);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch (err) {
+      console.error('Failed to copy link:', err);
+    }
+  }
+
   if (loading) {
     return (
       <div className="beta-signups-page">
@@ -77,7 +96,7 @@ function BetaSignupsPage() {
                 <th>Name</th>
                 <th>Status</th>
                 <th>Submitted</th>
-                <th>Invite Code</th>
+                <th>Signup Link</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -94,7 +113,23 @@ function BetaSignupsPage() {
                   <td>{new Date(signup.createdAt).toLocaleDateString()}</td>
                   <td>
                     {signup.inviteCode ? (
-                      <code className="invite-code">{signup.inviteCode}</code>
+                      <div className="link-cell">
+                        <a
+                          href={getSignupLink(signup.inviteCode)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="signup-link"
+                        >
+                          {getSignupLink(signup.inviteCode)}
+                        </a>
+                        <button
+                          className="copy-btn"
+                          onClick={() => copyLink(signup)}
+                          title="Copy link"
+                        >
+                          {copiedId === signup.id ? '✓' : '📋'}
+                        </button>
+                      </div>
                     ) : (
                       '—'
                     )}

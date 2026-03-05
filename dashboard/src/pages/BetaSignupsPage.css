@@ -123,3 +123,43 @@
   text-align: center;
   color: #666;
 }
+
+.link-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.signup-link {
+  color: #007bff;
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-family: 'Courier New', monospace;
+  word-break: break-all;
+  flex: 1;
+  min-width: 0;
+}
+
+.signup-link:hover {
+  text-decoration: underline;
+}
+
+.copy-btn {
+  background: transparent;
+  border: 1px solid #e0e0e0;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.copy-btn:hover {
+  background: #f5f5f5;
+  border-color: #007bff;
+}
+
+.copy-btn:active {
+  transform: scale(0.95);
+}
