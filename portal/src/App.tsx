@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/LoginPage';
@@ -25,16 +25,25 @@ import AboutPage from './pages/AboutPage';
 
 const ALLOW_SIGNUPS = import.meta.env.VITE_ALLOW_SIGNUPS === 'true';
 
+function SignupRoute() {
+  const location = useLocation();
+  const hasInvite = new URLSearchParams(location.search).has('invite');
+
+  // Allow signup page if self-service is enabled OR if there's an invite code
+  if (ALLOW_SIGNUPS || hasInvite) {
+    return <SignupPage />;
+  }
+
+  return <Navigate to="/#beta-signup" replace />;
+}
+
 export default function App() {
   return (
     <AuthProvider>
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
-        <Route
-          path="/signup"
-          element={ALLOW_SIGNUPS ? <SignupPage /> : <Navigate to="/#beta-signup" replace />}
-        />
+        <Route path="/signup" element={<SignupRoute />} />
         <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/about" element={<AboutPage />} />
         <Route path="/app" element={<AuthGuard><AppLayout /></AuthGuard>}>
