@@ -17,7 +17,19 @@ export class ConversationManagementService {
     const knex = (this.em as any).getKnex();
     return {
       query: async (sql: string, params: unknown[] = []) => {
-        const result = await knex.raw(sql, params);
+        // Convert PostgreSQL placeholders ($1, $2, etc.) to Knex placeholders (?)
+        // Process from highest to lowest to avoid replacing parts of numbers (e.g., $10 before $1)
+        let convertedSql = sql;
+        for (let i = params.length; i >= 1; i--) {
+          // Match $i that's NOT inside single quotes
+          const parts = convertedSql.split("'");
+          for (let j = 0; j < parts.length; j += 2) {
+            // Only replace in parts that are outside quotes (even indices)
+            parts[j] = parts[j].replace(new RegExp(`\\$${i}\\b`, 'g'), '?');
+          }
+          convertedSql = parts.join("'");
+        }
+        const result = await knex.raw(convertedSql, params);
         return { rows: result.rows as any[] };
       },
     };

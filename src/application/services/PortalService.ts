@@ -384,12 +384,16 @@ export class PortalService {
       id: string; agent_id: string | null; partition_id: string | null;
       external_id: string; created_at: string; last_active_at: string;
     }>(
-      `SELECT c.id, c.agent_id, c.partition_id, c.external_id, c.created_at, c.last_active_at
-       FROM conversations c
-       WHERE c.tenant_id = $1
-         AND ($2::uuid IS NULL OR c.partition_id = $2)
-       ORDER BY c.last_active_at DESC`,
-      [tenantId, partitionId ?? null],
+      partitionId
+        ? `SELECT c.id, c.agent_id, c.partition_id, c.external_id, c.created_at, c.last_active_at
+           FROM conversations c
+           WHERE c.tenant_id = $1 AND c.partition_id = $2
+           ORDER BY c.last_active_at DESC`
+        : `SELECT c.id, c.agent_id, c.partition_id, c.external_id, c.created_at, c.last_active_at
+           FROM conversations c
+           WHERE c.tenant_id = $1
+           ORDER BY c.last_active_at DESC`,
+      partitionId ? [tenantId, partitionId] : [tenantId],
     );
     return result.rows;
   }
