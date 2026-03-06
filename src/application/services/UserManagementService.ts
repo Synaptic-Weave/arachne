@@ -143,8 +143,18 @@ export class UserManagementService {
         throw new Error('Email does not match beta signup');
       }
 
-      // Create user and tenant (similar to createUser flow)
       const normalizedEmail = dto.email.toLowerCase();
+
+      // Check if user already exists with this email
+      const existingUser = await this.em.findOne(User, { email: normalizedEmail });
+      if (existingUser) {
+        throw Object.assign(
+          new Error('This email is already registered. Please sign in instead.'),
+          { status: 409 }
+        );
+      }
+
+      // Create user and tenant (similar to createUser flow)
       const passwordHash = await hashPassword(dto.password);
       const { user, tenant } = this.createUserWithTenant(normalizedEmail, passwordHash);
 

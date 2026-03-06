@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { UniqueConstraintViolationException } from '@mikro-orm/core';
 import { orm } from '../orm.js';
 import { BetaSignup } from '../domain/entities/BetaSignup.js';
+import { User } from '../domain/entities/User.js';
 import { AdminService } from '../application/services/AdminService.js';
 
 export function registerBetaRoutes(fastify: FastifyInstance): void {
@@ -31,9 +32,22 @@ export function registerBetaRoutes(fastify: FastifyInstance): void {
       return reply.code(400).send({ error: 'Valid email is required' });
     }
 
+    const normalizedEmail = email.toLowerCase().trim();
     const em = orm.em.fork();
+
+    // Check if email already exists as a registered user
+    // Return same success message to avoid information disclosure
+    const existingUser = await em.findOne(User, { email: normalizedEmail });
+    if (existingUser) {
+      fastify.log.info({ email: normalizedEmail }, 'Beta signup attempt for existing user email');
+      return reply.code(200).send({
+        status: 'registered',
+        message: "You're on the list! We'll be in touch.",
+      });
+    }
+
     try {
-      const signup = new BetaSignup(email.toLowerCase().trim(), name);
+      const signup = new BetaSignup(normalizedEmail, name);
       await em.persistAndFlush(signup);
       return reply.code(201).send({
         status: 'registered',
@@ -41,7 +55,11 @@ export function registerBetaRoutes(fastify: FastifyInstance): void {
       });
     } catch (err: any) {
       if (err instanceof UniqueConstraintViolationException) {
-        return reply.code(200).send({ status: 'already_registered' });
+        // Duplicate beta signup (not a user, just duplicate beta entry)
+        return reply.code(200).send({
+          status: 'registered',
+          message: "You're on the list! We'll be in touch.",
+        });
       }
       fastify.log.error({ err }, 'beta/signup insert failed');
       return reply.code(500).send({ error: 'Signup failed' });
