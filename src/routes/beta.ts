@@ -6,11 +6,12 @@ import { User } from '../domain/entities/User.js';
 import { AdminService } from '../application/services/AdminService.js';
 
 export function registerBetaRoutes(fastify: FastifyInstance): void {
-  const adminService = new AdminService(orm.em);
-
   // ── GET /v1/beta/signups-enabled ──────────────────────────────────────────
   // Public endpoint to check if self-service signups are enabled
   fastify.get('/v1/beta/signups-enabled', async (request, reply) => {
+    const em = orm.em.fork();
+    const adminService = new AdminService(em);
+
     try {
       const settings = await adminService.getSettings();
       return reply.send({ signupsEnabled: settings.signupsEnabled });
