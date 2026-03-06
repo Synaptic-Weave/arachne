@@ -1015,6 +1015,12 @@ export function registerPortalRoutes(
         });
 
         if (response.status >= 400) {
+          fastify.log.error({
+            provider: provider.name,
+            agentId: agent.id,
+            status: response.status,
+            error: response.body
+          }, 'Provider returned an error');
           return reply.code(502).send({ error: 'Provider returned an error', details: response.body });
         }
 

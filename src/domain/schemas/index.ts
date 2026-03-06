@@ -12,6 +12,7 @@ export { ConversationMessageSchema } from './ConversationMessage.schema.js';
 export { ConversationSnapshotSchema } from './ConversationSnapshot.schema.js';
 export { BetaSignupSchema } from './BetaSignup.schema.js';
 export { SettingsSchema } from './Settings.schema.js';
+export { ProviderSchema } from './Provider.schema.js';
 
 import { TenantSchema } from './Tenant.schema.js';
 import { UserSchema } from './User.schema.js';
@@ -27,6 +28,7 @@ import { ConversationMessageSchema } from './ConversationMessage.schema.js';
 import { ConversationSnapshotSchema } from './ConversationSnapshot.schema.js';
 import { BetaSignupSchema } from './BetaSignup.schema.js';
 import { SettingsSchema } from './Settings.schema.js';
+import { ProviderSchema } from './Provider.schema.js';
 
 export const allSchemas = [
   TenantSchema,
@@ -43,4 +45,5 @@ export const allSchemas = [
   ConversationSnapshotSchema,
   BetaSignupSchema,
   SettingsSchema,
+  ProviderSchema,
 ];

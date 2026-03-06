@@ -196,6 +196,10 @@ export class TenantManagementService {
     if (dto.conversationSummaryModel !== undefined) agent.conversationSummaryModel = dto.conversationSummaryModel;
     agent.updatedAt = new Date();
     await this.em.flush();
+
+    // Evict provider cache when agent configuration changes
+    evictProvider(agentId);
+
     return toAgentViewModel(agent);
   }
 
