@@ -7,7 +7,9 @@ import { evictProvider } from '../providers/registry.js';
 import { encryptTraceBody, decryptTraceBody } from '../encryption.js';
 import { getAdminAnalyticsSummary, getAdminTimeseriesMetrics, getAdminModelBreakdown } from '../analytics.js';
 import { AdminService } from '../application/services/AdminService.js';
+import { ProviderManagementService } from '../application/services/ProviderManagementService.js';
 import { signJwt } from '../auth/jwtUtils.js';
+import type { CreateProviderDto, UpdateProviderDto } from '../application/dtos/provider.dto.js';
 
 const ADMIN_JWT_SECRET = process.env.ADMIN_JWT_SECRET ?? 'unsafe-dev-secret-change-in-production';
 
@@ -489,6 +491,110 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
 
       const settings = await adminService.updateSettings(signupsEnabled, adminId);
       return reply.send(settings);
+    }
+  );
+
+  // ===== Provider Management Routes =====
+
+  const providerService = new ProviderManagementService(em.fork());
+
+  // GET /v1/admin/providers — List all gateway providers
+  fastify.get('/v1/admin/providers', authOpts, async (request, reply) => {
+    const providers = await providerService.listGatewayProviders();
+    return reply.send(providers);
+  });
+
+  // GET /v1/admin/providers/:id — Get a gateway provider by ID
+  fastify.get<{ Params: { id: string } }>(
+    '/v1/admin/providers/:id',
+    authOpts,
+    async (request, reply) => {
+      try {
+        const provider = await providerService.getGatewayProvider(request.params.id);
+        return reply.send(provider);
+      } catch (err: any) {
+        if (err.name === 'NotFoundError') {
+          return reply.code(404).send({ error: 'Provider not found' });
+        }
+        throw err;
+      }
+    }
+  );
+
+  // POST /v1/admin/providers — Create a gateway provider
+  fastify.post<{ Body: CreateProviderDto }>(
+    '/v1/admin/providers',
+    authOpts,
+    async (request, reply) => {
+      try {
+        const provider = await providerService.createGatewayProvider(request.body);
+        return reply.code(201).send(provider);
+      } catch (err: any) {
+        if (err.status === 400) {
+          return reply.code(400).send({ error: err.message });
+        }
+        throw err;
+      }
+    }
+  );
+
+  // PUT /v1/admin/providers/:id — Update a gateway provider
+  fastify.put<{ Params: { id: string }; Body: UpdateProviderDto }>(
+    '/v1/admin/providers/:id',
+    authOpts,
+    async (request, reply) => {
+      try {
+        const provider = await providerService.updateGatewayProvider(
+          request.params.id,
+          request.body
+        );
+        return reply.send(provider);
+      } catch (err: any) {
+        if (err.name === 'NotFoundError') {
+          return reply.code(404).send({ error: 'Provider not found' });
+        }
+        if (err.status === 400) {
+          return reply.code(400).send({ error: err.message });
+        }
+        throw err;
+      }
+    }
+  );
+
+  // DELETE /v1/admin/providers/:id — Delete a gateway provider
+  fastify.delete<{ Params: { id: string } }>(
+    '/v1/admin/providers/:id',
+    authOpts,
+    async (request, reply) => {
+      try {
+        await providerService.deleteGatewayProvider(request.params.id);
+        return reply.code(204).send();
+      } catch (err: any) {
+        if (err.name === 'NotFoundError') {
+          return reply.code(404).send({ error: 'Provider not found' });
+        }
+        if (err.status === 400) {
+          return reply.code(400).send({ error: err.message });
+        }
+        throw err;
+      }
+    }
+  );
+
+  // POST /v1/admin/providers/:id/default — Set a gateway provider as default
+  fastify.post<{ Params: { id: string } }>(
+    '/v1/admin/providers/:id/default',
+    authOpts,
+    async (request, reply) => {
+      try {
+        const provider = await providerService.setGatewayDefault(request.params.id);
+        return reply.send(provider);
+      } catch (err: any) {
+        if (err.name === 'NotFoundError') {
+          return reply.code(404).send({ error: 'Provider not found' });
+        }
+        throw err;
+      }
     }
   );
 }

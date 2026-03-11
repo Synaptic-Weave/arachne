@@ -1,15 +1,21 @@
 import { EntitySchema } from '@mikro-orm/core';
-import { Provider } from '../entities/Provider.js';
+import { ProviderBase } from '../entities/ProviderBase.js';
 import { Tenant } from '../entities/Tenant.js';
 
-export const ProviderSchema = new EntitySchema<Provider>({
-  class: Provider,
+export const ProviderBaseSchema = new EntitySchema<ProviderBase>({
+  class: ProviderBase,
   tableName: 'providers',
+  discriminatorColumn: 'type',
+  discriminatorMap: {
+    openai: 'OpenAIProvider',
+    azure: 'AzureProvider',
+    ollama: 'OllamaProvider',
+  },
+  abstract: true,
   properties: {
     id: { type: 'uuid', primary: true },
     name: { type: 'string', columnType: 'varchar(255)' },
     description: { type: 'text', nullable: true },
-    type: { type: 'string', columnType: 'varchar(50)' },
     tenant: {
       kind: 'm:1',
       entity: () => Tenant,
@@ -22,14 +28,6 @@ export const ProviderSchema = new EntitySchema<Provider>({
       default: false,
     },
     apiKey: { type: 'text', fieldName: 'api_key' },
-    baseUrl: { type: 'text', fieldName: 'base_url', nullable: true },
-    deployment: { type: 'string', columnType: 'varchar(255)', nullable: true },
-    apiVersion: {
-      type: 'string',
-      columnType: 'varchar(50)',
-      fieldName: 'api_version',
-      nullable: true,
-    },
     availableModels: {
       type: 'array',
       fieldName: 'available_models',
@@ -49,9 +47,13 @@ export const ProviderSchema = new EntitySchema<Provider>({
   },
   indexes: [
     { properties: ['tenant'] },
-    { properties: ['isDefault'], expression: 'is_default WHERE tenant_id IS NULL' },
+    {
+      properties: ['isDefault'],
+      expression: 'is_default WHERE tenant_id IS NULL',
+      name: 'idx_providers_gateway_default'
+    },
   ],
   uniques: [
-    { properties: ['tenant', 'name'] },
+    { properties: ['tenant', 'name'], name: 'providers_tenant_id_name_unique' },
   ],
 });

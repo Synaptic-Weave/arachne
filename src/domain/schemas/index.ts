@@ -12,7 +12,10 @@ export { ConversationMessageSchema } from './ConversationMessage.schema.js';
 export { ConversationSnapshotSchema } from './ConversationSnapshot.schema.js';
 export { BetaSignupSchema } from './BetaSignup.schema.js';
 export { SettingsSchema } from './Settings.schema.js';
-export { ProviderSchema } from './Provider.schema.js';
+export { ProviderBaseSchema } from './ProviderBase.schema.js';
+export { OpenAIProviderSchema } from './OpenAIProvider.schema.js';
+export { AzureProviderSchema } from './AzureProvider.schema.js';
+export { OllamaProviderSchema } from './OllamaProvider.schema.js';
 
 import { TenantSchema } from './Tenant.schema.js';
 import { UserSchema } from './User.schema.js';
@@ -28,7 +31,10 @@ import { ConversationMessageSchema } from './ConversationMessage.schema.js';
 import { ConversationSnapshotSchema } from './ConversationSnapshot.schema.js';
 import { BetaSignupSchema } from './BetaSignup.schema.js';
 import { SettingsSchema } from './Settings.schema.js';
-import { ProviderSchema } from './Provider.schema.js';
+import { ProviderBaseSchema } from './ProviderBase.schema.js';
+import { OpenAIProviderSchema } from './OpenAIProvider.schema.js';
+import { AzureProviderSchema } from './AzureProvider.schema.js';
+import { OllamaProviderSchema } from './OllamaProvider.schema.js';
 
 export const allSchemas = [
   TenantSchema,
@@ -45,5 +51,8 @@ export const allSchemas = [
   ConversationSnapshotSchema,
   BetaSignupSchema,
   SettingsSchema,
-  ProviderSchema,
+  ProviderBaseSchema,
+  OpenAIProviderSchema,
+  AzureProviderSchema,
+  OllamaProviderSchema,
 ];
