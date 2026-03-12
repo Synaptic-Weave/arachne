@@ -51,6 +51,7 @@ function toAgentViewModel(a: Agent): AgentViewModel {
     conversationsEnabled: a.conversationsEnabled,
     conversationTokenLimit: a.conversationTokenLimit,
     conversationSummaryModel: a.conversationSummaryModel,
+    knowledgeBaseRef: a.knowledgeBaseRef,
     createdAt: a.createdAt.toISOString(),
     updatedAt: a.updatedAt ? a.updatedAt.toISOString() : null,
   };

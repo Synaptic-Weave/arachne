@@ -11,6 +11,7 @@ export interface AgentViewModel {
   conversationsEnabled: boolean;
   conversationTokenLimit: number;
   conversationSummaryModel: string | null;
+  knowledgeBaseRef: string | null;
   createdAt: string;
   updatedAt: string | null;
 }

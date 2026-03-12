@@ -73,7 +73,7 @@ export function registerPortalRoutes(
     conversation_token_limit?: number | null;
     conversation_summary_model?: string | null;
     knowledge_base_ref?: string | null;
-    created_at: string; updated_at: string | null;
+    created_at: string | Date; updated_at: string | Date | null;
   }) {
     return {
       id: row.id,
