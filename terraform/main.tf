@@ -87,7 +87,7 @@ module "database" {
 resource "azurerm_key_vault_secret" "database_url" {
   name         = "database-url"
   key_vault_id = module.keyvault.key_vault_id
-  value        = "postgresql://${var.db_admin_login}:${module.keyvault.db_admin_password}@${module.database.fqdn}:5432/arachne?sslmode=require"
+  value        = "postgresql://${var.db_admin_login}:${urlencode(module.keyvault.db_admin_password)}@${module.database.fqdn}:5432/arachne?sslmode=require"
   depends_on   = [module.keyvault]
 }
 
