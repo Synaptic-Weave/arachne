@@ -17,7 +17,7 @@ import type { Browser, Page } from 'playwright';
 import {
   launchBrowser,
   newPage,
-  portalSignup,
+  ensureSignup,
   portalLogin,
   navigateTo,
   waitForVisible,
@@ -37,7 +37,7 @@ describe('Portal app smoke tests', () => {
   beforeAll(async () => {
     browser = await launchBrowser();
     page = await newPage(browser);
-    await portalSignup(page, email, password, uniqueName('AppOrg'));
+    await ensureSignup(page, email, password, uniqueName('AppOrg'));
   });
 
   afterAll(async () => {
@@ -54,8 +54,7 @@ describe('Portal app smoke tests', () => {
 
   // -------------------------------------------------------------------------
   it('traces page renders', async () => {
-    await page.goto(`${BASE_URL}/app/traces`);
-    await waitForVisible(page, 'body', 5000);
+    await navigateTo(page, `${BASE_URL}/app/traces`, email, password);
     await screenshotIfDocsMode(page, 'portal-traces', 'Portal traces page', 'Traces');
     const content = await page.content();
     expect(content).toMatch(/trace|request|No traces/i);

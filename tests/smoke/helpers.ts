@@ -239,6 +239,137 @@ export async function acceptInvite(
   await waitForUrl(page, /\/app/);
 }
 
+// ---------------------------------------------------------------------------
+// Admin token helper (API-based, no browser)
+// ---------------------------------------------------------------------------
+export async function getAdminToken(): Promise<string> {
+  const resp = await fetch(`${BASE_URL}/v1/admin/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: ADMIN_USERNAME, password: ADMIN_PASSWORD }),
+  });
+  if (!resp.ok) {
+    throw new Error(`Admin login failed: ${resp.status} ${await resp.text()}`);
+  }
+  const data = await resp.json() as { token: string };
+  return data.token;
+}
+
+// ---------------------------------------------------------------------------
+// Beta signup flow (for environments with SIGNUPS_ENABLED=false)
+// ---------------------------------------------------------------------------
+export async function portalBetaSignup(
+  page: Page,
+  email: string,
+  password: string,
+  tenantName?: string
+): Promise<void> {
+  // 1. Submit beta signup request
+  const signupResp = await fetch(`${BASE_URL}/v1/beta/signup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  });
+  if (!signupResp.ok) {
+    throw new Error(`Beta signup failed: ${signupResp.status} ${await signupResp.text()}`);
+  }
+
+  // 2. Get admin token
+  const adminToken = await getAdminToken();
+
+  // 3. Find the signup by email
+  const listResp = await fetch(`${BASE_URL}/v1/admin/beta/signups`, {
+    headers: { Authorization: `Bearer ${adminToken}` },
+  });
+  if (!listResp.ok) {
+    throw new Error(`Failed to list beta signups: ${listResp.status}`);
+  }
+  const { signups } = await listResp.json() as { signups: Array<{ id: string; email: string; inviteCode: string | null }> };
+  const signup = signups.find((s) => s.email === email.toLowerCase());
+  if (!signup) {
+    throw new Error(`Beta signup not found for ${email}`);
+  }
+
+  // 4. Approve the signup
+  const approveResp = await fetch(`${BASE_URL}/v1/admin/beta/approve/${signup.id}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${adminToken}` },
+  });
+  if (!approveResp.ok) {
+    throw new Error(`Failed to approve beta signup: ${approveResp.status}`);
+  }
+  const approved = await approveResp.json() as { inviteCode: string };
+  const inviteCode = approved.inviteCode;
+
+  // 5. Create the account via direct API call so we can pass tenantName
+  const signupResp2 = await fetch(`${BASE_URL}/v1/portal/auth/signup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email,
+      password,
+      inviteToken: inviteCode,
+      ...(tenantName ? { tenantName } : {}),
+    }),
+  });
+  if (!signupResp2.ok) {
+    throw new Error(`Signup via invite failed: ${signupResp2.status} ${await signupResp2.text()}`);
+  }
+  const signupResult = await signupResp2.json() as { token: string };
+
+  // 6. Set the auth token in the browser and navigate to /app
+  await page.goto(`${BASE_URL}/login`);
+  await page.evaluate((token) => {
+    localStorage.setItem('loom_portal_token', token);
+  }, signupResult.token);
+  await page.goto(`${BASE_URL}/app`);
+  await waitForUrl(page, /\/app/);
+}
+
+// ---------------------------------------------------------------------------
+// Auto-detect signup mode and use appropriate flow
+// ---------------------------------------------------------------------------
+export async function ensureSignup(
+  page: Page,
+  email: string,
+  password: string,
+  tenantName?: string
+): Promise<void>;
+export async function ensureSignup(
+  page: Page,
+  opts: { email: string; password: string; tenantName?: string }
+): Promise<void>;
+export async function ensureSignup(
+  page: Page,
+  emailOrOpts: string | { email: string; password: string; tenantName?: string },
+  password?: string,
+  tenantName?: string
+): Promise<void> {
+  let email: string;
+  let pass: string;
+  let name: string | undefined;
+
+  if (typeof emailOrOpts === 'string') {
+    email = emailOrOpts;
+    pass = password!;
+    name = tenantName;
+  } else {
+    email = emailOrOpts.email;
+    pass = emailOrOpts.password;
+    name = emailOrOpts.tenantName;
+  }
+
+  // Check if self-service signups are enabled
+  const resp = await fetch(`${BASE_URL}/v1/beta/signups-enabled`);
+  const { signupsEnabled } = await resp.json() as { signupsEnabled: boolean };
+
+  if (signupsEnabled) {
+    await portalSignup(page, email, pass, name);
+  } else {
+    await portalBetaSignup(page, email, pass, name);
+  }
+}
+
 export async function portalLogout(page: Page) {
   const logoutBtn = page.locator('button:has-text("Logout"), button:has-text("Sign out"), a:has-text("Logout"), a:has-text("Sign out")').first();
   await logoutBtn.click();

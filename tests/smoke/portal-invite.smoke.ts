@@ -17,7 +17,7 @@ import type { Browser, Page } from 'playwright';
 import {
   launchBrowser,
   newPage,
-  portalSignup,
+  ensureSignup,
   portalLogin,
   acceptInvite,
   waitForVisible,
@@ -44,7 +44,7 @@ describe('Portal invite flow smoke tests', () => {
   beforeAll(async () => {
     browser = await launchBrowser();
     page = await newPage(browser);
-    await portalSignup(page, ownerEmail, ownerPassword, uniqueName('InviteOrg'));
+    await ensureSignup(page, ownerEmail, ownerPassword, uniqueName('InviteOrg'));
   });
 
   afterAll(async () => {

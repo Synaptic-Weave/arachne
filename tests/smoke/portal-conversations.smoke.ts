@@ -16,7 +16,7 @@ import type { Browser, Page } from 'playwright';
 import {
   launchBrowser,
   newPage,
-  portalSignup,
+  ensureSignup,
   portalLogin,
   waitForVisible,
   waitForAppReady,
@@ -38,7 +38,7 @@ describe('Portal conversations smoke tests', () => {
   beforeAll(async () => {
     browser = await launchBrowser();
     page = await newPage(browser);
-    await portalSignup(page, email, password, uniqueName('ConversationsOrg'));
+    await ensureSignup(page, email, password, uniqueName('ConversationsOrg'));
 
     const token = await page.evaluate(() => localStorage.getItem('loom_portal_token'));
     if (!token) return;
@@ -150,10 +150,10 @@ describe('Portal conversations smoke tests', () => {
     await firstRow.click();
     await page.waitForTimeout(1500);
 
-    // Thread panel should appear with "Thread —" heading
+    // Expanded row should show message content (role labels like "user"/"assistant")
     const content = await page.content();
-    const hasThreadPanel = content.includes('Thread') || content.includes('messages');
-    expect(hasThreadPanel).toBe(true);
+    const hasMessages = content.includes('user') || content.includes('assistant') || content.includes('No messages');
+    expect(hasMessages).toBe(true);
   });
 
   // -------------------------------------------------------------------------

@@ -23,7 +23,7 @@ import { join } from 'path';
 import {
   launchBrowser,
   newPage,
-  portalSignup,
+  ensureSignup,
   uniqueEmail,
   uniqueName,
   BASE_URL,
@@ -52,7 +52,7 @@ describe('CLI integration smoke tests', () => {
     mkdirSync(testDir, { recursive: true });
 
     // 1. Signup for account via portal
-    await portalSignup(page, { email, password, tenantName });
+    await ensureSignup(page, { email, password, tenantName });
 
     // Get the auth token and tenant info by calling the login API
     const loginResp = await fetch(`${BASE_URL}/v1/portal/auth/login`, {

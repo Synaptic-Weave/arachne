@@ -17,7 +17,7 @@ import type { Browser, Page } from 'playwright';
 import {
   launchBrowser,
   newPage,
-  portalSignup,
+  ensureSignup,
   portalLogin,
   acceptInvite,
   waitForVisible,
@@ -50,11 +50,11 @@ describe('Portal tenant switcher smoke tests', () => {
     orgBName = uniqueName('OrgB');
 
     // Step 1: User signs up → creates OrgA
-    await portalSignup(page, userEmail, userPassword, orgAName);
+    await ensureSignup(page, userEmail, userPassword, orgAName);
 
     // Step 2: OrgB owner signs up
     await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
-    await portalSignup(page, orgBOwnerEmail, orgBOwnerPassword, orgBName);
+    await ensureSignup(page, orgBOwnerEmail, orgBOwnerPassword, orgBName);
 
     // Step 3: OrgB owner creates invite link
     await page.goto(`${BASE_URL}/app/members`);

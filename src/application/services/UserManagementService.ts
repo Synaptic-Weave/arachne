@@ -164,8 +164,8 @@ export class UserManagementService {
       const passwordHash = await hashPassword(dto.password);
       const { user, tenant } = this.createUserWithTenant(normalizedEmail, passwordHash);
 
-      // Set tenant name from email domain or default
-      tenant.name = normalizedEmail.split('@')[0] + "'s Org";
+      // Set tenant name from request or fall back to email-based default
+      tenant.name = dto.tenantName?.trim() || (normalizedEmail.split('@')[0] + "'s Org");
 
       this.em.persist(user);
       this.em.persist(tenant);

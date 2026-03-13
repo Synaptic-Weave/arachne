@@ -18,7 +18,7 @@ import type { Browser, Page } from 'playwright';
 import {
   launchBrowser,
   newPage,
-  portalSignup,
+  ensureSignup,
   portalLogin,
   waitForVisible,
   waitForAppReady,
@@ -43,7 +43,7 @@ describe('Portal agents smoke tests', () => {
     page = await newPage(browser);
     agentName = uniqueName('TestAgent');
     subtenantName = uniqueName('TestSubtenant');
-    await portalSignup(page, email, password, uniqueName('AgentsOrg'));
+    await ensureSignup(page, email, password, uniqueName('AgentsOrg'));
   });
 
   afterAll(async () => {

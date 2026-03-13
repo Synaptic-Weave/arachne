@@ -16,7 +16,7 @@ import type { Browser, Page } from 'playwright';
 import {
   launchBrowser,
   newPage,
-  portalSignup,
+  ensureSignup,
   portalLogin,
   waitForUrl,
   waitForVisible,
@@ -53,7 +53,7 @@ describe('Portal auth smoke tests', () => {
 
   // -------------------------------------------------------------------------
   it('new user can sign up and lands on /app', async () => {
-    await portalSignup(page, email, password, tenantName);
+    await ensureSignup(page, email, password, tenantName);
     await screenshotIfDocsMode(page, 'portal-signup-success', 'Portal after signup', 'Authentication');
     const url = page.url();
     expect(url).toMatch(/\/app/);

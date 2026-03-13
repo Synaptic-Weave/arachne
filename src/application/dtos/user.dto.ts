@@ -14,6 +14,7 @@ export interface AcceptInviteDto {
   inviteToken: string;
   email: string;
   password: string;
+  tenantName?: string;
 }
 
 export interface AuthResult {

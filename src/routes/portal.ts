@@ -108,7 +108,7 @@ export function registerPortalRoutes(
 
     if (inviteToken) {
       try {
-        const result = await userMgmtSvc.acceptInvite({ email, password, inviteToken });
+        const result = await userMgmtSvc.acceptInvite({ email, password, inviteToken, tenantName: tenantName || undefined });
         return reply.code(201).send({
           token: result.token,
           user: { id: result.userId, email: result.email },
@@ -1204,12 +1204,13 @@ export function registerPortalRoutes(
       const rows = await svc.listConversations(tenantId, partition_id ?? null);
       return reply.send({
         conversations: rows.map((row) => ({
-          uuid: row.id,
-          id: row.external_id,
-          agentId: row.agent_id,
-          partitionId: row.partition_id,
-          createdAt: row.created_at,
-          lastActiveAt: row.last_active_at,
+          id: row.id,
+          external_id: row.external_id,
+          agent_id: row.agent_id,
+          partition_id: row.partition_id,
+          created_at: row.created_at,
+          last_active_at: row.last_active_at,
+          message_count: row.message_count,
         })),
       });
     },
@@ -1230,7 +1231,7 @@ export function registerPortalRoutes(
       const formattedSnapshots = snapshots.map((row) => {
         let summary: string | null = null;
         try { summary = decryptTraceBody(tenantId, row.summary_encrypted, row.summary_iv); } catch { /* skip */ }
-        return { id: row.id, summary, messagesArchived: row.messages_archived, createdAt: row.created_at };
+        return { id: row.id, summary, messages_archived: row.messages_archived, created_at: row.created_at };
       });
 
       const formattedMessages = messages.map((row) => {
@@ -1240,23 +1241,23 @@ export function registerPortalRoutes(
           id: row.id,
           role: row.role,
           content,
-          tokenEstimate: row.token_estimate,
-          snapshotId: row.snapshot_id,
-          createdAt: row.created_at,
+          token_estimate: row.token_estimate,
+          snapshot_id: row.snapshot_id,
+          created_at: row.created_at,
         };
       });
 
       return reply.send({
         conversation: {
-          uuid: conv.id,
-          id: conv.external_id,
-          agentId: conv.agent_id,
-          partitionId: conv.partition_id,
-          createdAt: conv.created_at,
-          lastActiveAt: conv.last_active_at,
+          id: conv.id,
+          external_id: conv.external_id,
+          agent_id: conv.agent_id,
+          partition_id: conv.partition_id,
+          created_at: conv.created_at,
+          last_active_at: conv.last_active_at,
+          messages: formattedMessages,
+          snapshots: formattedSnapshots,
         },
-        snapshots: formattedSnapshots,
-        messages: formattedMessages,
       });
     },
   );

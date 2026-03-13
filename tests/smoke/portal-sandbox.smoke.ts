@@ -17,7 +17,7 @@ import type { Browser, Page } from 'playwright';
 import {
   launchBrowser,
   newPage,
-  portalSignup,
+  ensureSignup,
   portalLogin,
   waitForVisible,
   waitForAppReady,
@@ -38,7 +38,7 @@ describe('Portal sandbox smoke tests', () => {
   beforeAll(async () => {
     browser = await launchBrowser();
     page = await newPage(browser);
-    await portalSignup(page, email, password, uniqueName('SandboxOrg'));
+    await ensureSignup(page, email, password, uniqueName('SandboxOrg'));
 
     const token = await page.evaluate(() => localStorage.getItem('loom_portal_token'));
     if (!token) return;
