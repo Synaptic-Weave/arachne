@@ -579,3 +579,150 @@ describe('POST /v1/portal/knowledge-bases', () => {
     expect(res.statusCode).toBe(403);
   });
 });
+
+// ── GET /v1/portal/knowledge-bases/:id/chunks ─────────────────────────────
+
+describe('GET /v1/portal/knowledge-bases/:id/chunks', () => {
+  let app: FastifyInstance;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    mockEm.flush.mockResolvedValue(undefined);
+    app = await buildApp();
+  });
+
+  afterEach(async () => { await app.close(); });
+
+  it('returns paginated chunks for a valid KB', async () => {
+    mockEm.findOne.mockResolvedValue(mockKbArtifact);
+    const mockChunks = [
+      { id: 'c1', chunkIndex: 0, content: 'Hello world', sourcePath: 'doc.txt', tokenCount: 5, metadata: {}, createdAt: new Date() },
+      { id: 'c2', chunkIndex: 1, content: 'Second chunk', sourcePath: 'doc.txt', tokenCount: 4, metadata: {}, createdAt: new Date() },
+    ];
+    mockEm.find.mockResolvedValue(mockChunks);
+    mockEm.count.mockResolvedValue(2);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/portal/knowledge-bases/${TEST_KB_ID}/chunks`,
+      headers: { authorization: `Bearer ${authToken()}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.chunks).toHaveLength(2);
+    expect(body.total).toBe(2);
+    expect(body.chunks[0].content).toBe('Hello world');
+    expect(body.chunks[0].sourcePath).toBe('doc.txt');
+  });
+
+  it('returns 404 when KB does not exist', async () => {
+    mockEm.findOne.mockResolvedValue(null);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/v1/portal/knowledge-bases/nonexistent/chunks',
+      headers: { authorization: `Bearer ${authToken()}` },
+    });
+
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('returns 401 without auth', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/portal/knowledge-bases/${TEST_KB_ID}/chunks`,
+    });
+    expect(res.statusCode).toBe(401);
+  });
+});
+
+// ── GET /v1/portal/knowledge-bases/:id/sources ────────────────────────────
+
+describe('GET /v1/portal/knowledge-bases/:id/sources', () => {
+  let app: FastifyInstance;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    mockEm.flush.mockResolvedValue(undefined);
+    app = await buildApp();
+  });
+
+  afterEach(async () => { await app.close(); });
+
+  it('returns source file inventory', async () => {
+    mockEm.findOne.mockResolvedValue(mockKbArtifact);
+    const knexRaw = vi.fn().mockResolvedValue({
+      rows: [
+        { source_path: 'doc1.txt', chunk_count: '3', total_tokens: '150' },
+        { source_path: 'doc2.md', chunk_count: '2', total_tokens: '80' },
+      ],
+    });
+    (mockEm as any).getKnex = vi.fn(() => ({ raw: knexRaw }));
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/portal/knowledge-bases/${TEST_KB_ID}/sources`,
+      headers: { authorization: `Bearer ${authToken()}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.sources).toHaveLength(2);
+    expect(body.sources[0].sourcePath).toBe('doc1.txt');
+    expect(body.sources[0].chunkCount).toBe(3);
+    expect(body.sources[0].totalTokens).toBe(150);
+  });
+
+  it('returns 404 for missing KB', async () => {
+    mockEm.findOne.mockResolvedValue(null);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/v1/portal/knowledge-bases/nonexistent/sources',
+      headers: { authorization: `Bearer ${authToken()}` },
+    });
+
+    expect(res.statusCode).toBe(404);
+  });
+});
+
+// ── POST /v1/portal/knowledge-bases/:id/search ──────────────────────────────
+
+describe('POST /v1/portal/knowledge-bases/:id/search', () => {
+  let app: FastifyInstance;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    mockEm.flush.mockResolvedValue(undefined);
+    app = await buildApp();
+  });
+
+  afterEach(async () => { await app.close(); });
+
+  it('returns 400 when query is missing', async () => {
+    mockEm.findOne.mockResolvedValue(mockKbArtifact);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/portal/knowledge-bases/${TEST_KB_ID}/search`,
+      headers: { authorization: `Bearer ${authToken()}`, 'content-type': 'application/json' },
+      payload: {},
+    });
+
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('returns 404 for missing KB', async () => {
+    mockEm.findOne.mockResolvedValue(null);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/portal/knowledge-bases/nonexistent/search',
+      headers: { authorization: `Bearer ${authToken()}`, 'content-type': 'application/json' },
+      payload: { query: 'test' },
+    });
+
+    expect(res.statusCode).toBe(404);
+  });
+});

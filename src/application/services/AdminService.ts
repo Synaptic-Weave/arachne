@@ -91,6 +91,7 @@ export interface SettingsRow {
   defaultEmbedderProvider: string | null;
   defaultEmbedderModel: string | null;
   defaultEmbedderApiKey: string | null;
+  defaultEmbedderProviderId: string | null;
   updatedAt: string;
   updatedByAdminId: string | null;
 }
@@ -444,6 +445,7 @@ export class AdminService {
       defaultEmbedderProvider: settings.defaultEmbedderProvider,
       defaultEmbedderModel: settings.defaultEmbedderModel,
       defaultEmbedderApiKey: settings.defaultEmbedderApiKey ? '••••••••' : null,
+      defaultEmbedderProviderId: settings.defaultEmbedderProviderId,
       updatedAt: settings.updatedAt.toISOString(),
       updatedByAdminId: settings.updatedByAdminId,
     };
@@ -455,6 +457,7 @@ export class AdminService {
       defaultEmbedderProvider?: string | null;
       defaultEmbedderModel?: string | null;
       defaultEmbedderApiKey?: string | null;
+      defaultEmbedderProviderId?: string | null;
     },
     adminId: string,
   ): Promise<SettingsRow> {
@@ -469,11 +472,19 @@ export class AdminService {
       settings.updateSignupsEnabled(updates.signupsEnabled, adminId);
     }
 
-    if (
+    // New path: provider reference (clears legacy fields)
+    if (updates.defaultEmbedderProviderId !== undefined) {
+      settings.updateEmbedderProviderRef(
+        updates.defaultEmbedderProviderId,
+        updates.defaultEmbedderModel ?? settings.defaultEmbedderModel,
+        adminId,
+      );
+    } else if (
       updates.defaultEmbedderProvider !== undefined ||
       updates.defaultEmbedderModel !== undefined ||
       updates.defaultEmbedderApiKey !== undefined
     ) {
+      // Legacy path: standalone fields
       settings.updateEmbedderConfig(
         updates.defaultEmbedderProvider ?? settings.defaultEmbedderProvider,
         updates.defaultEmbedderModel ?? settings.defaultEmbedderModel,
@@ -489,6 +500,7 @@ export class AdminService {
       defaultEmbedderProvider: settings.defaultEmbedderProvider,
       defaultEmbedderModel: settings.defaultEmbedderModel,
       defaultEmbedderApiKey: settings.defaultEmbedderApiKey ? '••••••••' : null,
+      defaultEmbedderProviderId: settings.defaultEmbedderProviderId,
       updatedAt: settings.updatedAt.toISOString(),
       updatedByAdminId: settings.updatedByAdminId,
     };

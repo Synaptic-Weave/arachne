@@ -22,26 +22,46 @@ export interface RetrievalResult {
 // ---------------------------------------------------------------------------
 
 async function embedQuery(text: string, config: EmbeddingAgentConfig): Promise<number[]> {
-  const baseUrl =
-    config.provider === 'openai'
-      ? 'https://api.openai.com'
-      : 'https://api.openai.com'; // extend for azure/ollama as needed
+  let url: string;
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  let body: object;
 
-  const resp = await fetch(`${baseUrl}/v1/embeddings`, {
+  if (config.provider === 'azure') {
+    const baseUrl = config.baseUrl ?? '';
+    const deployment = config.deployment ?? config.model;
+    const apiVersion = config.apiVersion ?? '2024-02-01';
+    url = `${baseUrl}/openai/deployments/${deployment}/embeddings?api-version=${apiVersion}`;
+    headers['api-key'] = config.apiKey ?? '';
+    body = { input: text };
+  } else if (config.provider === 'ollama') {
+    const baseUrl = config.baseUrl ?? 'http://localhost:11434';
+    url = `${baseUrl}/api/embeddings`;
+    body = { model: config.model, prompt: text };
+  } else {
+    // OpenAI or OpenAI-compatible
+    const baseUrl = config.baseUrl ?? 'https://api.openai.com';
+    url = `${baseUrl}/v1/embeddings`;
+    headers['Authorization'] = `Bearer ${config.apiKey ?? ''}`;
+    body = { model: config.model, input: text };
+  }
+
+  const resp = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${config.apiKey ?? ''}`,
-    },
-    body: JSON.stringify({ model: config.model, input: text }),
+    headers,
+    body: JSON.stringify(body),
   });
 
   if (!resp.ok) {
-    const body = await resp.text().catch(() => '');
-    throw new Error(`Embedding API error ${resp.status}: ${body}`);
+    const errBody = await resp.text().catch(() => '');
+    throw new Error(`Embedding API error ${resp.status}: ${errBody}`);
   }
 
   const data = (await resp.json()) as any;
+
+  // Ollama returns { embedding: [...] }, OpenAI/Azure return { data: [{ embedding: [...] }] }
+  if (config.provider === 'ollama') {
+    return data.embedding as number[];
+  }
   return data.data[0].embedding as number[];
 }
 
@@ -66,11 +86,13 @@ export async function retrieveChunks(
   // 1. Resolve embedder config
   const embeddingService = new EmbeddingAgentService();
   const embedConfig = await embeddingService.resolveEmbedder(embeddingAgentRef, tenantId, em);
+  console.log(`[rag:retrieval] embedder resolved: provider=${embedConfig.provider} model=${embedConfig.model} baseUrl=${embedConfig.baseUrl ?? 'default'}`);
 
   // 2. Embed the query
   const embedStart = Date.now();
   const vector = await embedQuery(query, embedConfig);
   const embeddingLatencyMs = Date.now() - embedStart;
+  console.log(`[rag:retrieval] query embedded in ${embeddingLatencyMs}ms, vector dimensions=${vector.length}`);
 
   // Format as pgvector literal: [0.1, 0.2, ...]
   const vectorLiteral = `[${vector.join(',')}]`;
@@ -85,10 +107,18 @@ export async function retrieveChunks(
     LIMIT ?
   `;
 
+  // Check chunk count for this artifact
+  const countResult = await (em as any).getKnex().raw(
+    'SELECT COUNT(*) as cnt FROM kb_chunks WHERE artifact_id = ?', [artifactId]
+  );
+  const chunkCount = parseInt(countResult.rows?.[0]?.cnt ?? '0', 10);
+  console.log(`[rag:retrieval] artifact ${artifactId} has ${chunkCount} chunks in kb_chunks table`);
+
   const searchStart = Date.now();
   const knex = (em as any).getKnex();
   const result = await knex.raw(sql, [vectorLiteral, artifactId, vectorLiteral, topK]);
   const vectorSearchLatencyMs = Date.now() - searchStart;
+  console.log(`[rag:retrieval] vector search completed in ${vectorSearchLatencyMs}ms, ${result.rows?.length ?? 0} results`);
 
   const rows: Array<{
     id: string;

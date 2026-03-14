@@ -182,8 +182,10 @@ describe('Portal app smoke tests', () => {
   // -------------------------------------------------------------------------
   it('knowledge bases creation panel opens on button click', async () => {
     await navigateTo(page, `${BASE_URL}/app/knowledge-bases`, email, password);
-    await waitForVisible(page, ':text("New Knowledge Base")', 10000);
-    await page.locator(':text("New Knowledge Base")').click();
+    // Wait for page to fully load (including embedder-info async call)
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await waitForVisible(page, 'button:has-text("New Knowledge Base")', 10000);
+    await page.locator('button:has-text("New Knowledge Base")').click();
 
     // Creation panel should appear with name input and drop zone
     await waitForVisible(page, 'input[placeholder="my-knowledge-base"]', 5000);

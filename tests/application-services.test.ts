@@ -5,6 +5,7 @@ import { defineConfig } from '@mikro-orm/postgresql';
 import { UserManagementService } from '../src/application/services/UserManagementService.js';
 import { TenantManagementService } from '../src/application/services/TenantManagementService.js';
 import { TenantService } from '../src/application/services/TenantService.js';
+import { ProviderManagementService } from '../src/application/services/ProviderManagementService.js';
 import { Tenant } from '../src/domain/entities/Tenant.js';
 import { Agent } from '../src/domain/entities/Agent.js';
 import { User } from '../src/domain/entities/User.js';
@@ -12,6 +13,7 @@ import { TenantMembership } from '../src/domain/entities/TenantMembership.js';
 import { ApiKey } from '../src/domain/entities/ApiKey.js';
 import { Invite } from '../src/domain/entities/Invite.js';
 import { BetaSignup } from '../src/domain/entities/BetaSignup.js';
+import { ProviderTenantAccess } from '../src/domain/entities/ProviderTenantAccess.js';
 import { allSchemas } from '../src/domain/schemas/index.js';
 
 vi.mock('../src/providers/registry.js', () => ({
@@ -1044,6 +1046,104 @@ describe('TenantService', () => {
       const em = buildMockEm({ findOne: vi.fn().mockResolvedValue(apiKeyRecord) });
       const svc = new TenantService(em);
       await expect(svc.loadByApiKey('some-key')).rejects.toThrow('Tenant is not active');
+    });
+  });
+});
+
+// ── ProviderManagementService ──────────────────────────────────────────────
+
+describe('ProviderManagementService', () => {
+  describe('updateTenantAvailability', () => {
+    it('sets tenantAvailable and returns updated provider', async () => {
+      const provider = { id: 'p1', tenant: null, tenantAvailable: false, updatedAt: null, constructor: { name: 'OpenAIProvider' }, name: 'Test', description: null, isDefault: false, apiKey: 'key', availableModels: [], createdAt: new Date(), isGatewayProvider: () => true };
+      const em = buildMockEm({ findOneOrFail: vi.fn().mockResolvedValue(provider) });
+      const svc = new ProviderManagementService(em);
+
+      const result = await svc.updateTenantAvailability('p1', true);
+
+      expect(provider.tenantAvailable).toBe(true);
+      expect(result.tenantAvailable).toBe(true);
+      expect(em.flush).toHaveBeenCalled();
+    });
+  });
+
+  describe('grantTenantAccess', () => {
+    it('creates access record', async () => {
+      const provider = { id: 'p1', tenant: null };
+      const tenant = { id: 't1', name: 'Tenant' };
+      const em = buildMockEm({
+        findOneOrFail: vi.fn()
+          .mockResolvedValueOnce(provider)
+          .mockResolvedValueOnce(tenant),
+        findOne: vi.fn().mockResolvedValue(null), // no existing access
+      });
+      const svc = new ProviderManagementService(em);
+
+      await svc.grantTenantAccess('p1', 't1');
+
+      expect(em.persist).toHaveBeenCalled();
+      expect(em.flush).toHaveBeenCalled();
+    });
+
+    it('throws when access already exists', async () => {
+      const provider = { id: 'p1', tenant: null };
+      const tenant = { id: 't1', name: 'Tenant' };
+      const existing = { provider, tenant };
+      const em = buildMockEm({
+        findOneOrFail: vi.fn()
+          .mockResolvedValueOnce(provider)
+          .mockResolvedValueOnce(tenant),
+        findOne: vi.fn().mockResolvedValue(existing),
+      });
+      const svc = new ProviderManagementService(em);
+
+      await expect(svc.grantTenantAccess('p1', 't1')).rejects.toThrow('already has access');
+    });
+  });
+
+  describe('revokeTenantAccess', () => {
+    it('removes access record', async () => {
+      const access = { provider: { id: 'p1' }, tenant: { id: 't1' } };
+      const em = buildMockEm({ findOneOrFail: vi.fn().mockResolvedValue(access) });
+      const svc = new ProviderManagementService(em);
+
+      await svc.revokeTenantAccess('p1', 't1');
+
+      expect(em.removeAndFlush).toHaveBeenCalledWith(access);
+    });
+  });
+
+  describe('listAvailableProvidersForTenant', () => {
+    it('merges global and per-tenant access providers', async () => {
+      const globalProvider = { id: 'g1', tenant: null, tenantAvailable: true, name: 'Global', isDefault: false, apiKey: 'k', availableModels: [], createdAt: new Date(), updatedAt: null, description: null, constructor: { name: 'OpenAIProvider' }, isGatewayProvider: () => true };
+      const specificProvider = { id: 's1', tenant: null, tenantAvailable: false, name: 'Specific', isDefault: false, apiKey: 'k2', availableModels: [], createdAt: new Date(), updatedAt: null, description: null, constructor: { name: 'AzureProvider' }, isGatewayProvider: () => true };
+
+      const em = buildMockEm({
+        find: vi.fn()
+          .mockResolvedValueOnce([globalProvider]) // global providers
+          .mockResolvedValueOnce([{ provider: specificProvider, tenant: { id: 't1' } }]), // per-tenant access
+      });
+      const svc = new ProviderManagementService(em);
+
+      const result = await svc.listAvailableProvidersForTenant('t1');
+
+      expect(result).toHaveLength(2);
+      expect(result.map(p => p.id)).toEqual(['g1', 's1']);
+    });
+
+    it('deduplicates providers that appear in both global and specific', async () => {
+      const provider = { id: 'p1', tenant: null, tenantAvailable: true, name: 'Both', isDefault: false, apiKey: 'k', availableModels: [], createdAt: new Date(), updatedAt: null, description: null, constructor: { name: 'OpenAIProvider' }, isGatewayProvider: () => true };
+
+      const em = buildMockEm({
+        find: vi.fn()
+          .mockResolvedValueOnce([provider])
+          .mockResolvedValueOnce([{ provider, tenant: { id: 't1' } }]),
+      });
+      const svc = new ProviderManagementService(em);
+
+      const result = await svc.listAvailableProvidersForTenant('t1');
+
+      expect(result).toHaveLength(1);
     });
   });
 });

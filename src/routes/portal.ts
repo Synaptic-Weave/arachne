@@ -5,8 +5,7 @@ import { registerPortalAuthMiddleware } from '../middleware/portalAuth.js';
 import { invalidateCachedKey } from '../auth.js';
 import type { TenantContext } from '../auth.js';
 import { encryptTraceBody, decryptTraceBody } from '../encryption.js';
-import { traceRecorder } from '../tracing.js';
-import { evictProvider, getProviderForTenant } from '../providers/registry.js';
+import { evictProvider } from '../providers/registry.js';
 import { applyAgentToRequest } from '../agent.js';
 import { getAnalyticsSummary, getTimeseriesMetrics, getModelBreakdown } from '../analytics.js';
 import { PortalService } from '../application/services/PortalService.js';
@@ -724,10 +723,11 @@ export function registerPortalRoutes(
       mcpEndpoints?: unknown[];
       mergePolicies?: Record<string, unknown>;
       conversationsEnabled?: boolean;
+      knowledgeBaseRef?: string | null;
     };
   }>('/v1/portal/agents', { preHandler: authRequired }, async (request, reply) => {
     const { tenantId } = request.portalUser!;
-    const { name, providerConfig, systemPrompt, skills, mcpEndpoints, mergePolicies, conversationsEnabled } = request.body;
+    const { name, providerConfig, systemPrompt, skills, mcpEndpoints, mergePolicies, conversationsEnabled, knowledgeBaseRef } = request.body;
 
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
       return reply.code(400).send({ error: 'name is required' });
@@ -743,6 +743,7 @@ export function registerPortalRoutes(
       mcpEndpoints: mcpEndpoints ?? null,
       mergePolicies,
       conversationsEnabled,
+      knowledgeBaseRef: knowledgeBaseRef ?? null,
     });
 
     return reply.code(201).send({ agent: formatAgent({
@@ -792,6 +793,7 @@ export function registerPortalRoutes(
       conversationsEnabled?: boolean;
       conversationTokenLimit?: number | null;
       conversationSummaryModel?: string | null;
+      knowledgeBaseRef?: string | null;
     };
   }>(
     '/v1/portal/agents/:id',
@@ -802,6 +804,7 @@ export function registerPortalRoutes(
       const {
         name, providerConfig, systemPrompt, skills, mcpEndpoints, mergePolicies,
         availableModels, conversationsEnabled, conversationTokenLimit, conversationSummaryModel,
+        knowledgeBaseRef,
       } = request.body;
 
       const preparedProviderConfig =
@@ -820,6 +823,7 @@ export function registerPortalRoutes(
         conversationsEnabled,
         conversationTokenLimit: conversationTokenLimit ?? undefined,
         conversationSummaryModel,
+        knowledgeBaseRef,
       });
 
       return reply.send({ agent: formatAgent({
@@ -933,6 +937,8 @@ export function registerPortalRoutes(
   );
 
   // ── POST /v1/portal/agents/:id/chat ──────────────────────────────────────
+  // Sandbox chat: routes through the gateway endpoint for full production parity
+  // (RAG, conversations, merge policies, tracing — all handled by the gateway).
   fastify.post<{
     Params: { id: string };
     Body: { messages?: unknown[]; model?: string; conversation_id?: string; partition_id?: string };
@@ -940,8 +946,8 @@ export function registerPortalRoutes(
     '/v1/portal/agents/:id/chat',
     { preHandler: authRequired },
     async (request, reply) => {
-      const { userId } = request.portalUser!;
-      const { id } = request.params;
+      const { userId, tenantId } = request.portalUser!;
+      const { id: agentId } = request.params;
       const body = request.body as {
         messages?: unknown[]; model?: string; conversation_id?: string; partition_id?: string;
       };
@@ -950,185 +956,67 @@ export function registerPortalRoutes(
         return reply.code(400).send({ error: 'messages array is required and must not be empty' });
       }
 
-      const data = await svc.getAgentForChat(id, userId);
+      // Verify the user has access to this agent
+      const data = await svc.getAgentForChat(agentId, userId);
       if (!data) {
         return reply.code(404).send({ error: 'Agent not found' });
       }
 
-      const { agent, tenantChain } = data;
+      // Retrieve the agent's internal sandbox API key
+      const { Agent: AgentEntity } = await import('../domain/entities/Agent.js');
+      const sandboxEm = orm.em.fork();
+      const agentEntity = await sandboxEm.findOne(AgentEntity, { id: agentId });
+      if (!agentEntity?.sandboxKey) {
+        return reply.code(400).send({ error: 'Agent has no sandbox key. Re-create the agent or create an API key.' });
+      }
 
-      // Resolve providerConfig: agent first, then tenant chain
-      let resolvedProviderConfig: Record<string, unknown> | null = agent.provider_config ?? null;
-      if (!resolvedProviderConfig) {
-        for (const t of tenantChain) {
-          if (t.provider_config) { resolvedProviderConfig = t.provider_config; break; }
+      // Decrypt the stored sandbox key
+      let rawKey = agentEntity.sandboxKey;
+      if (rawKey.startsWith('encrypted:')) {
+        const parts = rawKey.split(':');
+        if (parts.length === 3) {
+          const { decryptTraceBody } = await import('../encryption.js');
+          rawKey = decryptTraceBody(data.agent.tenant_id, parts[1], parts[2]);
         }
       }
 
-      if (!resolvedProviderConfig && !process.env.OPENAI_API_KEY) {
-        return reply.code(400).send({ error: 'Agent has no provider configured' });
+      // Route through the gateway endpoint via fastify.inject()
+      const gatewayResponse = await fastify.inject({
+        method: 'POST',
+        url: '/v1/chat/completions',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${rawKey}`,
+        },
+        payload: {
+          model: body.model ?? 'gpt-4o-mini',
+          messages: body.messages,
+          stream: false,
+          ...(body.conversation_id ? { conversation_id: body.conversation_id } : {}),
+          ...(body.partition_id ? { partition_id: body.partition_id } : {}),
+        },
+      });
+
+      // Forward the gateway response
+      const responseBody = JSON.parse(gatewayResponse.body);
+
+      if (gatewayResponse.statusCode >= 400) {
+        return reply.code(gatewayResponse.statusCode).send(responseBody);
       }
 
-      // Resolve systemPrompt
-      let resolvedSystemPrompt: string | null = agent.system_prompt ?? null;
-      if (!resolvedSystemPrompt) {
-        for (const t of tenantChain) {
-          if (t.system_prompt) { resolvedSystemPrompt = t.system_prompt; break; }
-        }
+      // Reshape to sandbox response format
+      const choice = responseBody?.choices?.[0];
+      if (!choice) {
+        return reply.code(502).send({ error: 'Provider returned no choices' });
       }
 
-      // Resolve skills union
-      const skillsUnion: unknown[] = [];
-      const skillsSeen = new Set<string>();
-      const addSkills = (arr: unknown[] | null) => {
-        if (!arr) return;
-        for (const s of arr) {
-          const key = JSON.stringify(s);
-          if (!skillsSeen.has(key)) { skillsSeen.add(key); skillsUnion.push(s); }
-        }
-      };
-      addSkills(agent.skills);
-      for (const t of tenantChain) addSkills(t.skills);
-
-      // Resolve mcpEndpoints union
-      const endpointsUnion: unknown[] = [];
-      const endpointsSeen = new Set<string>();
-      const addEndpoints = (arr: unknown[] | null) => {
-        if (!arr) return;
-        for (const e of arr) {
-          const key = JSON.stringify(e);
-          if (!endpointsSeen.has(key)) { endpointsSeen.add(key); endpointsUnion.push(e); }
-        }
-      };
-      addEndpoints(agent.mcp_endpoints);
-      for (const t of tenantChain) addEndpoints(t.mcp_endpoints);
-
-      const mergePolicies = (agent.merge_policies as any) ?? { system_prompt: 'prepend', skills: 'merge' };
-
-      const tenantCtx: TenantContext = {
-        tenantId: agent.tenant_id,
-        name: tenantChain[0]?.name ?? agent.tenant_id,
-        agentId: agent.id,
-        providerConfig: resolvedProviderConfig as any,
-        resolvedSystemPrompt: resolvedSystemPrompt ?? undefined,
-        resolvedSkills: skillsUnion.length > 0 ? skillsUnion : undefined,
-        resolvedMcpEndpoints: endpointsUnion.length > 0 ? endpointsUnion : undefined,
-        mergePolicies,
-      };
-
-      const provider = getProviderForTenant(tenantCtx);
-      const model = body.model ?? 'gpt-4o-mini';
-
-      // ── Conversation memory ────────────────────────────────────────────────
-      let resolvedConversationId: string | undefined;
-      let effectiveMessages = body.messages as any[];
-
-      if (agent.conversations_enabled) {
-        const incomingConversationId = body.conversation_id ?? crypto.randomUUID();
-        try {
-          const partitionId = body.partition_id
-            ? (await conversationSvc.getOrCreatePartition(
-                tenantCtx.tenantId,
-                body.partition_id,
-              )).id
-            : null;
-
-          const conversationUUID = (await conversationSvc.getOrCreateConversation(
-            tenantCtx.tenantId,
-            partitionId,
-            incomingConversationId,
-            agent.id,
-          )).id;
-          resolvedConversationId = incomingConversationId;
-
-          const ctx = await conversationSvc.loadContext(tenantCtx.tenantId, conversationUUID);
-          const historyMessages = conversationSvc.buildInjectionMessages(ctx);
-          if (historyMessages.length > 0) {
-            effectiveMessages = [...historyMessages, ...effectiveMessages];
-          }
-        } catch (err) {
-          fastify.log.warn({ err }, 'Sandbox conversation load failed — continuing without memory');
-        }
-      }
-
-      const effectiveBody = applyAgentToRequest(
-        { model, messages: effectiveMessages, stream: false },
-        tenantCtx,
-      );
-
-      try {
-        const startTimeMs = Date.now();
-        const upstreamStartMs = Date.now();
-        const response = await provider.proxy({
-          url: '/v1/chat/completions',
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: effectiveBody,
-        });
-
-        if (response.status >= 400) {
-          fastify.log.error({
-            provider: provider.name,
-            agentId: agent.id,
-            status: response.status,
-            error: response.body
-          }, 'Provider returned an error');
-          return reply.code(502).send({ error: 'Provider returned an error', details: response.body });
-        }
-
-        const choice = response.body?.choices?.[0];
-        if (!choice) {
-          return reply.code(502).send({ error: 'Provider returned no choices' });
-        }
-
-        const latencyMs = Date.now() - startTimeMs;
-        const usage = response.body?.usage;
-        traceRecorder.record({
-          tenantId: agent.tenant_id,
-          agentId: agent.id,
-          model: response.body?.model ?? model,
-          provider: provider.name,
-          requestBody: effectiveBody,
-          responseBody: response.body,
-          latencyMs,
-          statusCode: response.status,
-          promptTokens: usage?.prompt_tokens,
-          completionTokens: usage?.completion_tokens,
-          totalTokens: usage?.total_tokens,
-          ttfbMs: latencyMs,
-          gatewayOverheadMs: upstreamStartMs - startTimeMs,
-        });
-        await traceRecorder.flush();
-
-        if (resolvedConversationId) {
-          const partitionId = body.partition_id
-            ? (await conversationSvc.getOrCreatePartition(
-                tenantCtx.tenantId,
-                body.partition_id,
-              )).id
-            : null;
-          const conversationUUID = (await conversationSvc.getOrCreateConversation(
-            tenantCtx.tenantId,
-            partitionId,
-            resolvedConversationId,
-            agent.id,
-          )).id;
-          const userContent = (body.messages[body.messages.length - 1] as any)?.content as string ?? '';
-          const assistantContent = choice.message.content ?? '';
-          conversationSvc.storeMessages(
-            tenantCtx.tenantId, conversationUUID, userContent, assistantContent, null, null,
-          ).catch((err) => fastify.log.warn({ err }, 'Failed to store sandbox conversation messages'));
-        }
-
-        return reply.send({
-          message: choice.message,
-          model: response.body.model ?? model,
-          usage: response.body.usage ?? null,
-          ...(resolvedConversationId ? { conversation_id: resolvedConversationId } : {}),
-        });
-      } catch (err: any) {
-        return reply.code(502).send({ error: 'Provider call failed', details: err?.message ?? String(err) });
-      }
+      return reply.send({
+        message: choice.message,
+        model: responseBody.model ?? body.model ?? 'gpt-4o-mini',
+        usage: responseBody.usage ?? null,
+        ...(responseBody.conversation_id ? { conversation_id: responseBody.conversation_id } : {}),
+        ...(responseBody.rag_sources ? { rag_sources: responseBody.rag_sources } : {}),
+      });
     },
   );
 
@@ -1378,6 +1266,121 @@ export function registerPortalRoutes(
     },
   );
 
+  // ── GET /v1/portal/knowledge-bases/:id/chunks ──────────────────────────────
+  fastify.get<{ Params: { id: string }; Querystring: { limit?: string; offset?: string } }>(
+    '/v1/portal/knowledge-bases/:id/chunks',
+    { preHandler: authRequired },
+    async (request, reply) => {
+      const { tenantId } = request.portalUser!;
+      const { id } = request.params;
+      const limit = Math.min(parseInt(request.query.limit ?? '50', 10), 200);
+      const offset = parseInt(request.query.offset ?? '0', 10);
+      const em = orm.em.fork();
+      const { Artifact } = await import('../domain/entities/Artifact.js');
+      const artifact = await em.findOne(Artifact, { id, tenant: tenantId, kind: 'KnowledgeBase' });
+      if (!artifact) return reply.code(404).send({ error: 'Knowledge base not found' });
+
+      const { KbChunk } = await import('../domain/entities/KbChunk.js');
+      const [chunks, total] = await Promise.all([
+        em.find(KbChunk, { artifact: id }, {
+          orderBy: { chunkIndex: 'ASC' },
+          limit,
+          offset,
+          fields: ['id', 'chunkIndex', 'content', 'sourcePath', 'tokenCount', 'metadata', 'createdAt'],
+        }),
+        em.count(KbChunk, { artifact: id }),
+      ]);
+
+      return reply.send({
+        chunks: chunks.map(c => ({
+          id: c.id,
+          index: c.chunkIndex,
+          content: c.content,
+          sourcePath: c.sourcePath,
+          tokenCount: c.tokenCount,
+          metadata: c.metadata,
+          createdAt: c.createdAt,
+        })),
+        total,
+        limit,
+        offset,
+      });
+    },
+  );
+
+  // ── GET /v1/portal/knowledge-bases/:id/sources ────────────────────────────
+  fastify.get<{ Params: { id: string } }>(
+    '/v1/portal/knowledge-bases/:id/sources',
+    { preHandler: authRequired },
+    async (request, reply) => {
+      const { tenantId } = request.portalUser!;
+      const { id } = request.params;
+      const em = orm.em.fork();
+      const { Artifact } = await import('../domain/entities/Artifact.js');
+      const artifact = await em.findOne(Artifact, { id, tenant: tenantId, kind: 'KnowledgeBase' });
+      if (!artifact) return reply.code(404).send({ error: 'Knowledge base not found' });
+
+      const knex = (em as any).getKnex();
+      const result = await knex.raw(
+        `SELECT source_path, COUNT(*) as chunk_count, SUM(token_count) as total_tokens
+         FROM kb_chunks WHERE artifact_id = ?
+         GROUP BY source_path ORDER BY source_path`,
+        [id],
+      );
+
+      return reply.send({
+        sources: (result.rows as any[]).map(r => ({
+          sourcePath: r.source_path,
+          chunkCount: parseInt(r.chunk_count, 10),
+          totalTokens: r.total_tokens ? parseInt(r.total_tokens, 10) : null,
+        })),
+      });
+    },
+  );
+
+  // ── POST /v1/portal/knowledge-bases/:id/search ────────────────────────────
+  fastify.post<{ Params: { id: string }; Body: { query: string; topK?: number } }>(
+    '/v1/portal/knowledge-bases/:id/search',
+    { preHandler: authRequired },
+    async (request, reply) => {
+      const { tenantId } = request.portalUser!;
+      const { id } = request.params;
+      const { query, topK } = request.body;
+
+      if (!query || typeof query !== 'string') {
+        return reply.code(400).send({ error: 'query is required' });
+      }
+
+      const em = orm.em.fork();
+      const { Artifact } = await import('../domain/entities/Artifact.js');
+      const artifact = await em.findOne(Artifact, { id, tenant: tenantId, kind: 'KnowledgeBase' });
+      if (!artifact) return reply.code(404).send({ error: 'Knowledge base not found' });
+
+      const { retrieveChunks } = await import('../rag/retrieval.js');
+      const result = await retrieveChunks(
+        query,
+        artifact.id,
+        Math.min(topK ?? 5, 20),
+        tenantId,
+        undefined,
+        em,
+      );
+
+      return reply.send({
+        query,
+        chunks: result.chunks.map(c => ({
+          rank: c.rank,
+          content: c.content,
+          sourcePath: c.sourcePath,
+          similarityScore: c.similarityScore,
+        })),
+        embeddingLatencyMs: result.embeddingLatencyMs,
+        vectorSearchLatencyMs: result.vectorSearchLatencyMs,
+        totalLatencyMs: result.totalRagLatencyMs,
+      });
+    },
+  );
+
   // ── DELETE /v1/portal/knowledge-bases/:id ─────────────────────────────────
   fastify.delete<{ Params: { id: string } }>(
     '/v1/portal/knowledge-bases/:id',
@@ -1436,7 +1439,7 @@ export function registerPortalRoutes(
       return reply.code(400).send({ error: `Embedding not configured: ${err.message}` });
     }
 
-    const { provider, model, apiKey, dimensions } = embedderConfig;
+    const { apiKey, dimensions } = embedderConfig;
     if (!apiKey) return reply.code(400).send({ error: 'Embedding API key not configured' });
 
     // Chunk all file contents
@@ -1444,7 +1447,16 @@ export function registerPortalRoutes(
     const OVERLAP = 120;
     const rawChunks: Array<{ content: string; sourcePath: string }> = [];
     for (const file of fileBuffers) {
-      const text = file.content.toString('utf8');
+      let text: string;
+      if (file.filename.toLowerCase().endsWith('.pdf')) {
+        // Extract text from PDF
+        const { PDFParse } = await import('pdf-parse');
+        const parser = new PDFParse({ data: file.content });
+        const result = await parser.getText();
+        text = result.text;
+      } else {
+        text = file.content.toString('utf8');
+      }
       const textChunks = weaveService.chunkText(text, TOKEN_SIZE, OVERLAP);
       for (const chunk of textChunks) {
         rawChunks.push({ content: chunk, sourcePath: file.filename });
@@ -1457,7 +1469,7 @@ export function registerPortalRoutes(
     const texts = rawChunks.map((c) => c.content);
     let embeddings: number[][];
     try {
-      embeddings = await weaveService.embedTexts(texts, provider, model, apiKey);
+      embeddings = await weaveService.embedTexts(texts, embedderConfig);
     } catch (err: any) {
       return reply.code(500).send({ error: `Embedding generation failed: ${err.message}` });
     }
@@ -1475,8 +1487,8 @@ export function registerPortalRoutes(
     const sha256 = createHash('sha256').update(hashInput).digest('hex');
 
     const preprocessingHash = weaveService.computePreprocessingHash({
-      provider,
-      model,
+      provider: embedderConfig.provider,
+      model: embedderConfig.model,
       tokenSize: TOKEN_SIZE,
       overlap: OVERLAP,
     });
@@ -1499,8 +1511,8 @@ export function registerPortalRoutes(
         chunkCount: chunks.length,
         chunks,
         vectorSpaceData: {
-          provider,
-          model,
+          provider: embedderConfig.provider,
+          model: embedderConfig.model,
           dimensions,
           preprocessingHash,
         },

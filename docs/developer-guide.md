@@ -26,9 +26,9 @@ Create a knowledge base by uploading files directly. Requires owner role.
 
 **Multipart fields:**
 - `name` (string, required) — Knowledge base name
-- `files` (file, required, multiple) — Document files (.txt, .md, .json, .csv)
+- `files` (file, required, multiple) — Document files (.txt, .md, .json, .csv, .pdf)
 
-**Processing:** The server chunks uploaded text (650 tokens, 120 overlap), generates embeddings via the configured system embedder, and pushes the result to the registry.
+**Processing:** The server chunks uploaded text (650 tokens, 120 overlap), generates embeddings via the configured system embedder, and pushes the result to the registry. PDF files are processed server-side using `pdf-parse` for text extraction.
 
 **Response:**
 ```json
@@ -45,6 +45,155 @@ Create a knowledge base by uploading files directly. Requires owner role.
 
 Accepts `name` (string) and `orgSlug` (string) fields in addition to provider config. Both are validated server-side. The slug must be unique across all tenants.
 
+### GET /v1/portal/embedder-info
+
+Check whether an embedding model is configured for the tenant.
+
+**Response:**
+```json
+{
+  "available": true,
+  "provider": "openai",
+  "model": "text-embedding-3-small"
+}
+```
+
+### GET /v1/portal/available-providers
+
+List gateway providers available to the tenant. Includes providers marked `tenantAvailable=true` as well as those with per-tenant access grants.
+
+**Response:**
+```json
+{
+  "providers": [
+    {
+      "id": "provider-uuid",
+      "name": "OpenAI Production",
+      "type": "openai",
+      "availableModels": ["gpt-4o", "gpt-4o-mini"],
+      "baseUrl": "https://api.openai.com"
+    }
+  ]
+}
+```
+
+### GET /v1/portal/knowledge-bases/:id/chunks
+
+Paginated listing of chunks in a knowledge base.
+
+**Query parameters:**
+- `limit` (integer, optional, default 50) — Page size
+- `offset` (integer, optional, default 0) — Offset for pagination
+
+**Response:**
+```json
+{
+  "chunks": [
+    {
+      "id": "chunk-uuid",
+      "index": 0,
+      "content": "chunk text...",
+      "sourcePath": "readme.md",
+      "tokenCount": 312,
+      "metadata": {},
+      "createdAt": "2026-03-14T00:00:00.000Z"
+    }
+  ],
+  "total": 42,
+  "limit": 50,
+  "offset": 0
+}
+```
+
+### GET /v1/portal/knowledge-bases/:id/sources
+
+Source file inventory for a knowledge base.
+
+**Response:**
+```json
+{
+  "sources": [
+    {
+      "sourcePath": "readme.md",
+      "chunkCount": 12,
+      "totalTokens": 4200
+    }
+  ]
+}
+```
+
+### POST /v1/portal/knowledge-bases/:id/search
+
+Semantic search preview against a knowledge base. Generates an embedding for the query and runs a vector similarity search.
+
+**Request body:**
+```json
+{
+  "query": "How does authentication work?",
+  "topK": 5
+}
+```
+
+**Response:**
+```json
+{
+  "query": "How does authentication work?",
+  "chunks": [
+    {
+      "rank": 1,
+      "content": "chunk text...",
+      "sourcePath": "auth.md",
+      "similarityScore": 0.92
+    }
+  ],
+  "embeddingLatencyMs": 45,
+  "vectorSearchLatencyMs": 12,
+  "totalLatencyMs": 57
+}
+```
+
+### POST /v1/portal/agents/:id/chat
+
+Sandbox chat with an agent. Routes through the gateway for full production parity — RAG injection, conversation memory, merge policies, and tracing all apply. Uses an internal sandbox API key.
+
+When the agent has a knowledge base attached, the response includes a `rag_sources` array with retrieval metadata.
+
+**Request body:** Standard OpenAI chat completion request format.
+
+**Response:** Standard OpenAI chat completion response, extended with `rag_sources` when RAG retrieval is used.
+
+## Admin API
+
+### PUT /v1/admin/providers/:id/availability
+
+Toggle whether a gateway provider is available to all tenants by default.
+
+**Request body:**
+```json
+{
+  "tenantAvailable": true
+}
+```
+
+### GET /v1/admin/providers/:id/tenants
+
+List tenants with specific access grants to a provider. Returns tenants that have been individually granted access regardless of the provider's global `tenantAvailable` flag.
+
+### POST /v1/admin/providers/:id/tenants
+
+Grant a specific tenant access to a provider.
+
+**Request body:**
+```json
+{
+  "tenantId": "tenant-uuid"
+}
+```
+
+### DELETE /v1/admin/providers/:id/tenants/:tenantId
+
+Revoke a specific tenant's access to a provider.
+
 ## API Extensions
 
 Arachne proxies OpenAI's `/v1/chat/completions` endpoint with the following extensions:
@@ -58,6 +207,7 @@ Arachne proxies OpenAI's `/v1/chat/completions` endpoint with the following exte
 
 - `conversation_id` — Echo of request conversation ID
 - `partition_id` — Echo of request partition ID (if provided)
+- `rag_sources` — Array of retrieval sources when RAG is used: `[{ rank, sourcePath, similarityScore, contentPreview }]`
 - `X-Arachne-Conversation-ID` header — Resolved conversation UUID
 
 ## Stack
@@ -92,6 +242,7 @@ Arachne proxies OpenAI's `/v1/chat/completions` endpoint with the following exte
 - `parent_id` (uuid) — Optional parent tenant (for subtenant hierarchy)
 - `provider_config` (jsonb) — Provider-specific credentials and settings
 - `system_prompt`, `skills`, `mcp_endpoints` (text/jsonb) — Inheritable agent defaults
+- `default_embedder_provider_id` (uuid) — Optional reference to a gateway provider used as the default embedding model
 - `created_at`, `updated_at` (timestamptz)
 
 **api_keys**

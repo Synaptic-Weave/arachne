@@ -10,6 +10,7 @@ export const SettingsSchema = new EntitySchema<Settings>({
     defaultEmbedderProvider: { type: 'string', fieldName: 'default_embedder_provider', nullable: true },
     defaultEmbedderModel: { type: 'string', fieldName: 'default_embedder_model', nullable: true },
     defaultEmbedderApiKey: { type: 'text', fieldName: 'default_embedder_api_key', nullable: true },
+    defaultEmbedderProviderId: { type: 'uuid', fieldName: 'default_embedder_provider_id', nullable: true },
     updatedAt: { type: 'Date', fieldName: 'updated_at', onUpdate: () => new Date() },
     updatedByAdminId: { type: 'uuid', fieldName: 'updated_by_admin_id', nullable: true },
   },

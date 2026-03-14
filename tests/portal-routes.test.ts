@@ -117,15 +117,17 @@ function buildMockTenantMgmtSvc(): TenantManagementService {
       systemPrompt: dto.systemPrompt, skills: dto.skills, mcpEndpoints: dto.mcpEndpoints,
       mergePolicies: dto.mergePolicies, availableModels: dto.availableModels,
       conversationsEnabled: false, conversationTokenLimit: null, conversationSummaryModel: null,
+      knowledgeBaseRef: dto.knowledgeBaseRef ?? null,
       createdAt: new Date().toISOString(), updatedAt: null,
     })),
-    updateAgent: vi.fn().mockResolvedValue({
-      id: TEST_AGENT_ID, tenantId: TEST_TENANT_ID, name: 'Updated', providerConfig: null,
+    updateAgent: vi.fn().mockImplementation((_tenantId: string, _id: string, dto: any) => Promise.resolve({
+      id: TEST_AGENT_ID, tenantId: TEST_TENANT_ID, name: dto.name ?? 'Updated', providerConfig: null,
       systemPrompt: null, skills: null, mcpEndpoints: null,
       mergePolicies: { system_prompt: 'prepend', skills: 'merge', mcp_endpoints: 'merge' },
       availableModels: null, conversationsEnabled: false, conversationTokenLimit: null,
-      conversationSummaryModel: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-    }),
+      conversationSummaryModel: null, knowledgeBaseRef: dto.knowledgeBaseRef ?? null,
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    })),
     deleteAgent: vi.fn().mockResolvedValue(undefined),
     listMembers: vi.fn().mockResolvedValue([]),
     updateMemberRole: vi.fn().mockResolvedValue(undefined),
@@ -163,6 +165,7 @@ function buildMockPortalSvc(overrides: Partial<Record<string, any>> = {}): Porta
     conversations_enabled: false,
     conversation_token_limit: null,
     conversation_summary_model: null,
+    knowledge_base_ref: null,
     created_at: new Date().toISOString(),
     updated_at: null,
   };
@@ -597,6 +600,61 @@ describe('POST /v1/portal/agents', () => {
       payload: { name: 'Bot' },
     });
     expect(res.statusCode).toBe(401);
+  });
+
+  it('persists knowledgeBaseRef when creating agent', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/portal/agents',
+      headers: { authorization: `Bearer ${authToken()}` },
+      payload: { name: 'RAG Agent', knowledgeBaseRef: 'my-kb' },
+    });
+
+    expect(res.statusCode).toBe(201);
+    const body = res.json<{ agent: { id: string; knowledgeBaseRef: string | null } }>();
+    expect(body.agent.knowledgeBaseRef).toBe('my-kb');
+  });
+});
+
+// ── PUT /v1/portal/agents/:id — knowledgeBaseRef ────────────────────────────
+
+describe('PUT /v1/portal/agents/:id', () => {
+  let app: FastifyInstance;
+
+  beforeEach(async () => {
+    process.env.ENCRYPTION_MASTER_KEY = TEST_MASTER_KEY;
+    app = await buildApp();
+  });
+
+  afterEach(async () => {
+    await app.close();
+    delete process.env.ENCRYPTION_MASTER_KEY;
+  });
+
+  it('persists knowledgeBaseRef when updating agent', async () => {
+    const res = await app.inject({
+      method: 'PUT',
+      url: `/v1/portal/agents/${TEST_AGENT_ID}`,
+      headers: { authorization: `Bearer ${authToken()}` },
+      payload: { knowledgeBaseRef: 'updated-kb' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ agent: { knowledgeBaseRef: string | null } }>();
+    expect(body.agent.knowledgeBaseRef).toBe('updated-kb');
+  });
+
+  it('clears knowledgeBaseRef when set to null', async () => {
+    const res = await app.inject({
+      method: 'PUT',
+      url: `/v1/portal/agents/${TEST_AGENT_ID}`,
+      headers: { authorization: `Bearer ${authToken()}` },
+      payload: { knowledgeBaseRef: null },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ agent: { knowledgeBaseRef: string | null } }>();
+    expect(body.agent.knowledgeBaseRef).toBeNull();
   });
 });
 

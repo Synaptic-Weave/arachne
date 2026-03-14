@@ -2,12 +2,16 @@ import type { EntityManager } from '@mikro-orm/core';
 import { Agent } from '../domain/entities/Agent.js';
 import { Tenant } from '../domain/entities/Tenant.js';
 import { Settings } from '../domain/entities/Settings.js';
+import { ProviderBase } from '../domain/entities/ProviderBase.js';
 
 export interface EmbeddingAgentConfig {
   provider: string;       // e.g., 'openai'
   model: string;          // e.g., 'text-embedding-3-small'
   dimensions: number;     // e.g., 1536
   apiKey?: string;        // resolved from provider config at runtime
+  baseUrl?: string | null;
+  deployment?: string;    // Azure only
+  apiVersion?: string;    // Azure only
   knowledgeBaseRef?: string;
 }
 
@@ -20,6 +24,27 @@ const KNOWN_DIMENSIONS: Record<string, number> = {
 
 function dimensionsForModel(model: string): number {
   return KNOWN_DIMENSIONS[model] ?? 1536;
+}
+
+/**
+ * Build an EmbeddingAgentConfig from a gateway ProviderBase entity.
+ */
+function buildConfigFromProvider(provider: ProviderBase, model: string): EmbeddingAgentConfig {
+  const className = provider.constructor.name;
+  const config: EmbeddingAgentConfig = {
+    provider: className === 'AzureProvider' ? 'azure'
+            : className === 'OllamaProvider' ? 'ollama'
+            : 'openai',
+    model,
+    dimensions: dimensionsForModel(model),
+    apiKey: provider.apiKey,
+    baseUrl: (provider as any).baseUrl ?? null,
+  };
+  if (className === 'AzureProvider') {
+    config.deployment = (provider as any).deployment;
+    config.apiVersion = (provider as any).apiVersion;
+  }
+  return config;
 }
 
 export class EmbeddingAgentService {
@@ -77,6 +102,17 @@ export class EmbeddingAgentService {
 
     // Fall back to Settings singleton (admin-configured defaults)
     const settings = await em.findOne(Settings, { id: 1 });
+
+    // New path: provider reference
+    if (settings?.defaultEmbedderProviderId && settings?.defaultEmbedderModel) {
+      const provider = await em.findOne(ProviderBase, { id: settings.defaultEmbedderProviderId });
+      if (!provider) {
+        throw new Error('Configured default embedder provider no longer exists');
+      }
+      return buildConfigFromProvider(provider, settings.defaultEmbedderModel);
+    }
+
+    // Legacy path: standalone fields
     if (settings?.defaultEmbedderProvider && settings?.defaultEmbedderModel) {
       return {
         provider: settings.defaultEmbedderProvider,

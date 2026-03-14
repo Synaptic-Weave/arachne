@@ -294,3 +294,125 @@ describe('dimensionsForModel (tested via resolveEmbedder)', () => {
     });
   }
 });
+
+// ── Settings provider ref fallback ──────────────────────────────────────────
+
+describe('EmbeddingAgentService.resolveEmbedder — provider ref', () => {
+  let service: EmbeddingAgentService;
+
+  beforeEach(() => {
+    service = new EmbeddingAgentService();
+  });
+
+  afterEach(() => {
+    delete process.env.SYSTEM_EMBEDDER_PROVIDER;
+    delete process.env.SYSTEM_EMBEDDER_MODEL;
+    vi.clearAllMocks();
+  });
+
+  it('resolves config from gateway provider when defaultEmbedderProviderId is set', async () => {
+    const settingsObj = {
+      id: 1,
+      defaultEmbedderProviderId: 'provider-uuid-1',
+      defaultEmbedderModel: 'text-embedding-3-small',
+      defaultEmbedderProvider: null,
+      defaultEmbedderApiKey: null,
+    };
+
+    // Mock OpenAI provider entity
+    const providerEntity = Object.create({ constructor: { name: 'OpenAIProvider' } });
+    Object.assign(providerEntity, {
+      id: 'provider-uuid-1',
+      apiKey: 'sk-test-key-123',
+      baseUrl: 'https://custom.openai.com',
+    });
+    // Set constructor name properly
+    Object.defineProperty(providerEntity, 'constructor', { value: { name: 'OpenAIProvider' } });
+
+    const em = buildMockEm({
+      findOne: vi.fn()
+        .mockResolvedValueOnce(settingsObj)   // Settings lookup
+        .mockResolvedValueOnce(providerEntity), // ProviderBase lookup
+    });
+
+    const config = await service.resolveEmbedder(undefined, 'tenant-1', em);
+
+    expect(config.provider).toBe('openai');
+    expect(config.model).toBe('text-embedding-3-small');
+    expect(config.apiKey).toBe('sk-test-key-123');
+    expect(config.baseUrl).toBe('https://custom.openai.com');
+  });
+
+  it('resolves Azure provider with deployment and apiVersion', async () => {
+    const settingsObj = {
+      id: 1,
+      defaultEmbedderProviderId: 'provider-uuid-2',
+      defaultEmbedderModel: 'text-embedding-3-small',
+      defaultEmbedderProvider: null,
+      defaultEmbedderApiKey: null,
+    };
+
+    const providerEntity = Object.create({});
+    Object.assign(providerEntity, {
+      id: 'provider-uuid-2',
+      apiKey: 'azure-key-456',
+      baseUrl: 'https://myresource.openai.azure.com',
+      deployment: 'embedding-deployment',
+      apiVersion: '2024-02-01',
+    });
+    Object.defineProperty(providerEntity, 'constructor', { value: { name: 'AzureProvider' } });
+
+    const em = buildMockEm({
+      findOne: vi.fn()
+        .mockResolvedValueOnce(settingsObj)
+        .mockResolvedValueOnce(providerEntity),
+    });
+
+    const config = await service.resolveEmbedder(undefined, 'tenant-1', em);
+
+    expect(config.provider).toBe('azure');
+    expect(config.apiKey).toBe('azure-key-456');
+    expect(config.deployment).toBe('embedding-deployment');
+    expect(config.apiVersion).toBe('2024-02-01');
+    expect(config.baseUrl).toBe('https://myresource.openai.azure.com');
+  });
+
+  it('throws when referenced provider no longer exists', async () => {
+    const settingsObj = {
+      id: 1,
+      defaultEmbedderProviderId: 'deleted-provider-id',
+      defaultEmbedderModel: 'text-embedding-3-small',
+      defaultEmbedderProvider: null,
+      defaultEmbedderApiKey: null,
+    };
+
+    const em = buildMockEm({
+      findOne: vi.fn()
+        .mockResolvedValueOnce(settingsObj)  // Settings
+        .mockResolvedValueOnce(null),         // Provider not found
+    });
+
+    await expect(service.resolveEmbedder(undefined, 'tenant-1', em))
+      .rejects.toThrow('no longer exists');
+  });
+
+  it('falls back to legacy fields when no provider ref', async () => {
+    const settingsObj = {
+      id: 1,
+      defaultEmbedderProviderId: null,
+      defaultEmbedderModel: 'text-embedding-3-small',
+      defaultEmbedderProvider: 'openai',
+      defaultEmbedderApiKey: 'legacy-key',
+    };
+
+    const em = buildMockEm({
+      findOne: vi.fn().mockResolvedValueOnce(settingsObj),
+    });
+
+    const config = await service.resolveEmbedder(undefined, 'tenant-1', em);
+
+    expect(config.provider).toBe('openai');
+    expect(config.apiKey).toBe('legacy-key');
+    expect(config.baseUrl).toBeUndefined();
+  });
+});

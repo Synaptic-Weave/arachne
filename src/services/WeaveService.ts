@@ -3,6 +3,7 @@ import { readFile, readdir, stat, mkdir, writeFile } from 'node:fs/promises';
 import { join, extname } from 'node:path';
 import { gzip, inflateRaw } from 'node:zlib';
 import { promisify } from 'node:util';
+import type { EmbeddingAgentConfig } from './EmbeddingAgentService.js';
 
 const gzipAsync = promisify(gzip) as (buf: Buffer) => Promise<Buffer>;
 const inflateRawAsync = promisify(inflateRaw) as (buf: Buffer) => Promise<Buffer>;
@@ -322,18 +323,20 @@ export class WeaveService {
   }
 
   /**
-   * Generate embeddings via OpenAI API.
+   * Generate embeddings via the configured provider API.
    * Batches internally at 100 texts per request.
+   * Accepts either full EmbeddingAgentConfig or legacy (provider, model, apiKey) args.
    */
   async embedTexts(
     texts: string[],
-    provider: string,
-    model: string,
-    apiKey: string,
+    providerOrConfig: string | EmbeddingAgentConfig,
+    model?: string,
+    apiKey?: string,
   ): Promise<number[][]> {
-    if (provider.toLowerCase() !== 'openai') {
-      throw new Error(`Unsupported embedding provider: ${provider}. Only "openai" is supported.`);
-    }
+    // Normalize to config object
+    const config: EmbeddingAgentConfig = typeof providerOrConfig === 'string'
+      ? { provider: providerOrConfig, model: model!, dimensions: 0, apiKey }
+      : providerOrConfig;
 
     const BATCH_SIZE = 100;
     const allEmbeddings: number[][] = [];
@@ -341,18 +344,52 @@ export class WeaveService {
     for (let i = 0; i < texts.length; i += BATCH_SIZE) {
       const batch = texts.slice(i, i + BATCH_SIZE);
 
-      const response = await fetch('https://api.openai.com/v1/embeddings', {
+      let url: string;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      let body: object;
+
+      if (config.provider === 'azure') {
+        const baseUrl = config.baseUrl ?? '';
+        const deployment = config.deployment ?? config.model;
+        const apiVersion = config.apiVersion ?? '2024-02-01';
+        url = `${baseUrl}/openai/deployments/${deployment}/embeddings?api-version=${apiVersion}`;
+        headers['api-key'] = config.apiKey ?? '';
+        body = { input: batch };
+      } else if (config.provider === 'ollama') {
+        const baseUrl = config.baseUrl ?? 'http://localhost:11434';
+        url = `${baseUrl}/api/embeddings`;
+        // Ollama /api/embeddings takes a single prompt; batch one at a time
+        for (const text of batch) {
+          const resp = await fetch(url, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ model: config.model, prompt: text }),
+          });
+          if (!resp.ok) {
+            const errBody = await resp.text();
+            throw new Error(`Ollama embeddings API error ${resp.status}: ${errBody}`);
+          }
+          const json = (await resp.json()) as { embedding: number[] };
+          allEmbeddings.push(json.embedding);
+        }
+        continue; // Skip the common fetch below — already handled per-text
+      } else {
+        // OpenAI or OpenAI-compatible
+        const baseUrl = config.baseUrl ?? 'https://api.openai.com';
+        url = `${baseUrl}/v1/embeddings`;
+        headers['Authorization'] = `Bearer ${config.apiKey ?? ''}`;
+        body = { model: config.model, input: batch };
+      }
+
+      const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({ model, input: batch }),
+        headers,
+        body: JSON.stringify(body),
       });
 
       if (!response.ok) {
         const errBody = await response.text();
-        throw new Error(`OpenAI embeddings API error ${response.status}: ${errBody}`);
+        throw new Error(`Embeddings API error ${response.status}: ${errBody}`);
       }
 
       const json = (await response.json()) as {

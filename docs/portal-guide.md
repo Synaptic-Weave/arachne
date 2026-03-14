@@ -41,7 +41,7 @@ Knowledge bases can be created directly in the portal or via the CLI.
 1. Click the **+ New Knowledge Base** button in the page header
 2. Enter a **name** for the knowledge base (e.g., `product-docs`, `support-kb`)
 3. **Drag and drop files** into the drop zone, or click to browse
-   - Accepted formats: `.txt`, `.md`, `.json`, `.csv`
+   - Accepted formats: `.txt`, `.md`, `.json`, `.csv`, `.pdf`
    - Multiple files can be uploaded at once
 4. Review the selected files list (click **x** to remove any)
 5. Click **Create**
@@ -51,7 +51,9 @@ The portal will automatically:
 - Generate embeddings using the configured system embedder
 - Push the knowledge base to the registry with a `latest` tag
 
-**Requirements:** A system embedder must be configured (`SYSTEM_EMBEDDER_PROVIDER`, `SYSTEM_EMBEDDER_MODEL`, `SYSTEM_EMBEDDER_API_KEY` env vars). If not configured, an error message will appear.
+**Embedder availability:** The creation panel checks embedder status by calling `GET /v1/portal/embedder-info` and displays an availability indicator. If no embedder is configured, a warning is shown and the Create button is disabled.
+
+**Requirements:** A system embedder must be configured (via environment variables, Settings default embedder, or a gateway provider). If not configured, an error message will appear.
 
 #### Via the CLI
 
@@ -165,6 +167,7 @@ The **Agent Editor** is the primary interface for configuring agents. Click on a
 | **Skills/Tools** | MCP tool definitions for agent to call |
 | **MCP Endpoints** | URLs of MCP servers hosting tools |
 | **Merge Policies** | How to combine agent context with request (prepend/append/overwrite) |
+| **Provider** | Select a gateway provider for this agent (fetched from `GET /v1/portal/available-providers`) |
 | **Knowledge Base** | Attach a deployed KB for RAG retrieval |
 | **Conversations** | Enable multi-turn memory and summarization |
 
@@ -182,6 +185,12 @@ Once attached:
 - The agent's responses will cite sources from the KB
 
 To remove a KB, click the **Clear** button and save.
+
+### Selecting a Provider
+
+The agent editor includes a **Provider** dropdown that lists gateway providers available to your tenant (fetched from `GET /v1/portal/available-providers`). Selecting a provider stores `{ gatewayProviderId }` in the agent's `providerConfig`, routing all requests for that agent through the chosen provider.
+
+If no provider is selected, the agent inherits the tenant's default provider configuration (see [Agent Configuration Inheritance](#agent-configuration-inheritance)).
 
 ### Export YAML Button
 
@@ -205,6 +214,25 @@ You can use this YAML to:
 - **Version control** — Commit agent specs to Git
 - **Reproduce locally** — Share agent configs with teammates
 - **Weave into bundles** — Publish the agent to the registry
+
+## Sandbox
+
+The **Sandbox** is a built-in chat interface for testing agents through the full gateway pipeline. It exercises the same request path as production API calls, including RAG retrieval, conversation memory, and merge policies.
+
+### Using the Sandbox
+
+1. Open an agent in the editor
+2. Click the **Sandbox** tab or button to open the chat panel
+3. Type a message and send it to test the agent's behavior
+
+### Features
+
+- **Full pipeline execution** — Requests flow through the gateway exactly as they would from an API client, applying system prompts, skills, merge policies, conversation memory, and RAG context injection
+- **KB info bar** — When the agent has a knowledge base attached, an info bar is displayed showing the KB name and status, so you can confirm RAG is active before testing
+- **Citation sources** — When RAG retrieves chunks from a knowledge base, citation sources are displayed under assistant messages, showing which documents contributed to the response and their similarity scores
+- **Markdown rendering** — Assistant responses are rendered with full markdown support, including code blocks, tables, lists, and inline formatting
+
+The sandbox is the recommended way to validate agent behavior before distributing API keys.
 
 ## Agent Configuration Inheritance
 

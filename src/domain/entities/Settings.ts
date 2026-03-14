@@ -4,6 +4,7 @@ export class Settings {
   defaultEmbedderProvider!: string | null;
   defaultEmbedderModel!: string | null;
   defaultEmbedderApiKey!: string | null;
+  defaultEmbedderProviderId!: string | null;
   updatedAt!: Date;
   updatedByAdminId!: string | null;
 
@@ -13,6 +14,7 @@ export class Settings {
     this.defaultEmbedderProvider = null;
     this.defaultEmbedderModel = null;
     this.defaultEmbedderApiKey = null;
+    this.defaultEmbedderProviderId = null;
     this.updatedAt = new Date();
     this.updatedByAdminId = null;
   }
@@ -32,6 +34,20 @@ export class Settings {
     this.defaultEmbedderProvider = provider;
     this.defaultEmbedderModel = model;
     this.defaultEmbedderApiKey = apiKey;
+    this.updatedAt = new Date();
+    this.updatedByAdminId = adminId;
+  }
+
+  updateEmbedderProviderRef(
+    providerId: string | null,
+    model: string | null,
+    adminId: string,
+  ): void {
+    this.defaultEmbedderProviderId = providerId;
+    this.defaultEmbedderModel = model;
+    // Clear legacy fields when using provider ref
+    this.defaultEmbedderProvider = null;
+    this.defaultEmbedderApiKey = null;
     this.updatedAt = new Date();
     this.updatedByAdminId = adminId;
   }

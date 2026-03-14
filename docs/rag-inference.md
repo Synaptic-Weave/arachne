@@ -20,9 +20,10 @@ The entire process is non-blocking and isolated from the main LLM request; RAG f
 Before querying the knowledge base, the system must resolve which embedding provider and model to use. The resolution order is:
 
 1. **Named embedding agent** (if `agent.embeddingAgentRef` is set) — Look up the agent by name in the tenant's agents table, parse its config (stored as JSON in the systemPrompt field)
-2. **Tenant default** (future) — Could specify a default embedder per tenant
-3. **System embedder** — Fall back to `SYSTEM_EMBEDDER_PROVIDER` and `SYSTEM_EMBEDDER_MODEL` environment variables
-4. **Error** — If none of the above are configured, return a clear error
+2. **System embedder env vars** — Fall back to `SYSTEM_EMBEDDER_PROVIDER` and `SYSTEM_EMBEDDER_MODEL` environment variables
+3. **Settings default embedder provider** — If `Settings.defaultEmbedderProviderId` is set, load the corresponding gateway provider entity and derive the embedder config (provider type, base URL, API key, model, dimensions) from the provider's stored fields
+4. **Settings legacy fields** — Fall back to `Settings.embedderProvider`, `Settings.embedderModel`, etc. if they exist as standalone fields
+5. **Error** — If none of the above are configured, return a clear error
 
 **System Embedder Environment Variables:**
 
@@ -46,6 +47,25 @@ POST https://api.openai.com/v1/embeddings
   "input": "user query text"
 }
 ```
+
+**Azure embedding routing:**
+
+```
+POST {baseUrl}/openai/deployments/{deployment}/embeddings?api-version={apiVersion}
+Headers: api-key: {apiKey}
+Body: { "input": "user query text" }
+```
+
+Azure uses `api-key` header authentication instead of Bearer tokens, and routes through deployment-specific URLs rather than a global `/v1/embeddings` endpoint.
+
+**Ollama embedding routing:**
+
+```
+POST {baseUrl}/api/embeddings
+Body: { "model": "nomic-embed-text", "prompt": "user query text" }
+```
+
+Ollama's response shape differs from the OpenAI format. It returns `{ embedding: [...] }` directly rather than `{ data: [{ embedding: [...] }] }`. The embedding adapter normalizes this before passing the vector to the search stage.
 
 **Result:** A `number[]` vector of fixed dimensions (e.g., 1536 for OpenAI's small model).
 
@@ -147,6 +167,68 @@ Every request that touches RAG (whether successfully or not) records these 13 fi
   "fallbackToNoRag": false
 }
 ```
+
+## RAG Sources in Response Body
+
+The `rag_sources` array is included directly in the `/v1/chat/completions` response body (in addition to trace metadata), making citation data available to API consumers without requiring trace access:
+
+```json
+{
+  "id": "chatcmpl-abc123",
+  "choices": [...],
+  "rag_sources": [
+    {
+      "rank": 1,
+      "sourcePath": "docs/architecture.md",
+      "similarityScore": 0.87,
+      "contentPreview": "The Arachne gateway is a multi-tenant proxy..."
+    },
+    {
+      "rank": 2,
+      "sourcePath": "docs/agents.md",
+      "similarityScore": 0.82,
+      "contentPreview": "Agents can define custom system prompts..."
+    }
+  ]
+}
+```
+
+Each entry contains:
+- `rank` — 1-based position in similarity-ranked results
+- `sourcePath` — Original file path within the knowledge base
+- `similarityScore` — Cosine similarity (0.0 to 1.0)
+- `contentPreview` — Truncated text preview of the retrieved chunk
+
+If RAG is not active or no chunks are retrieved, the `rag_sources` field is omitted from the response.
+
+## Knowledge Base Insights API
+
+The portal exposes several endpoints for inspecting knowledge base contents and testing retrieval:
+
+**Chunks endpoint** — List all chunks in a knowledge base with pagination:
+
+```
+GET /v1/portal/knowledge-bases/:id/chunks?page=1&limit=20
+```
+
+Returns chunk content, source path, and chunk index for browsing the full KB.
+
+**Sources endpoint** — List unique source files in a knowledge base:
+
+```
+GET /v1/portal/knowledge-bases/:id/sources
+```
+
+Returns a deduplicated list of source paths with chunk counts per file.
+
+**Search preview endpoint** — Test retrieval against a knowledge base without making a full chat completion:
+
+```
+POST /v1/portal/knowledge-bases/:id/search
+Body: { "query": "search text", "topK": 5 }
+```
+
+Returns the same ranked results as the RAG pipeline (rank, sourcePath, similarityScore, content) for previewing what an agent would retrieve for a given query.
 
 ## Configuration & Deployment
 

@@ -10,7 +10,7 @@ function formatDate(iso: string) {
   });
 }
 
-const ACCEPTED_EXTENSIONS = ['.txt', '.md', '.json', '.csv'];
+const ACCEPTED_EXTENSIONS = ['.txt', '.md', '.json', '.csv', '.pdf'];
 
 export default function KnowledgeBasesPage() {
   const [kbs, setKbs] = useState<KnowledgeBase[]>([]);

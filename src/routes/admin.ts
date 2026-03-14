@@ -481,6 +481,7 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
       defaultEmbedderProvider?: string | null;
       defaultEmbedderModel?: string | null;
       defaultEmbedderApiKey?: string | null;
+      defaultEmbedderProviderId?: string | null;
     };
   }>(
     '/v1/admin/settings',
@@ -492,14 +493,24 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
         return reply.code(401).send({ error: 'Unauthorized' });
       }
 
-      const { signupsEnabled, defaultEmbedderProvider, defaultEmbedderModel, defaultEmbedderApiKey } = request.body;
+      const { signupsEnabled, defaultEmbedderProvider, defaultEmbedderModel, defaultEmbedderApiKey, defaultEmbedderProviderId } = request.body;
 
       if (signupsEnabled !== undefined && typeof signupsEnabled !== 'boolean') {
         return reply.code(400).send({ error: 'signupsEnabled must be a boolean' });
       }
 
+      // Validate referenced provider exists
+      if (defaultEmbedderProviderId !== undefined && defaultEmbedderProviderId !== null) {
+        const providerSvc = new ProviderManagementService(em.fork());
+        try {
+          await providerSvc.getGatewayProvider(defaultEmbedderProviderId);
+        } catch {
+          return reply.code(400).send({ error: 'Referenced gateway provider does not exist' });
+        }
+      }
+
       const settings = await adminService.updateSettings(
-        { signupsEnabled, defaultEmbedderProvider, defaultEmbedderModel, defaultEmbedderApiKey },
+        { signupsEnabled, defaultEmbedderProvider, defaultEmbedderModel, defaultEmbedderApiKey, defaultEmbedderProviderId },
         adminId,
       );
       return reply.send(settings);

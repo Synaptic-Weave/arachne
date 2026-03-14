@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js",
+    "start": "tsx scripts/backfill-sandbox-keys.ts && node dist/index.js",
     "migrate": "node-pg-migrate",
     "migrate:up": "node-pg-migrate up",
     "migrate:down": "node-pg-migrate down",
@@ -22,7 +22,8 @@
     "build:all": "npm run build:portal && cd dashboard && npm run build",
     "docs:screenshots": "DOCS_MODE=true vitest run --config vitest.smoke.config.ts",
     "docs:generate": "tsx scripts/generate-ui-docs.ts",
-    "docs:build": "npm run docs:screenshots && npm run docs:generate"
+    "docs:build": "npm run docs:screenshots && npm run docs:generate",
+    "backfill:sandbox-keys": "tsx scripts/backfill-sandbox-keys.ts"
   },
   "keywords": [
     "ai",
@@ -59,6 +60,7 @@
     "fastify": "^5.7.4",
     "jsonwebtoken": "^9.0.3",
     "node-pg-migrate": "^8.0.4",
+    "pdf-parse": "^2.4.5",
     "undici": "^7.22.0"
   },
   "engines": {

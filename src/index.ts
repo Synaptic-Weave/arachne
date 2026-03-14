@@ -359,14 +359,16 @@ const start = async () => {
               );
           }
 
+          const ragSources = r.sources?.length > 0 ? { rag_sources: r.sources } : {};
           const responseToSend =
             conversationUUID && resolvedConversationId
               ? {
                   ...(finalBody as any),
                   conversation_id: resolvedConversationId,
                   ...(partitionExternalId ? { partition_id: partitionExternalId } : {}),
+                  ...ragSources,
                 }
-              : finalBody;
+              : { ...(finalBody as any), ...ragSources };
 
           if (conversationUUID) {
             reply.header('X-Arachne-Conversation-ID', resolvedConversationId ?? '');

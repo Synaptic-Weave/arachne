@@ -39,6 +39,7 @@ export const AgentSchema = new EntitySchema<Agent>({
       fieldName: 'conversation_summary_model',
       nullable: true,
     },
+    sandboxKey: { type: 'text', fieldName: 'sandbox_key', nullable: true },
     createdAt: { type: 'Date', fieldName: 'created_at', onCreate: () => new Date() },
     updatedAt: { type: 'Date', fieldName: 'updated_at', nullable: true, onUpdate: () => new Date() },
     apiKeys: { kind: '1:m', entity: () => ApiKey, mappedBy: 'agent', eager: false },

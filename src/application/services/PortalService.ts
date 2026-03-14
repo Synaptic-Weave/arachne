@@ -273,6 +273,7 @@ export class PortalService {
         conversations_enabled: agent.conversationsEnabled,
         conversation_token_limit: agent.conversationTokenLimit,
         conversation_summary_model: agent.conversationSummaryModel,
+        knowledge_base_ref: agent.knowledgeBaseRef,
       },
       tenantChain,
     };

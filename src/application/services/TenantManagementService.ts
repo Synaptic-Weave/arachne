@@ -6,6 +6,7 @@ import { TenantMembership } from '../../domain/entities/TenantMembership.js';
 import { User } from '../../domain/entities/User.js';
 import { Invite } from '../../domain/entities/Invite.js';
 import { evictProvider } from '../../providers/registry.js';
+import { encryptTraceBody } from '../../encryption.js';
 import type {
   TenantViewModel,
   MemberViewModel,
@@ -173,8 +174,19 @@ export class TenantManagementService {
       conversationsEnabled: dto.conversationsEnabled,
       conversationTokenLimit: dto.conversationTokenLimit,
       conversationSummaryModel: dto.conversationSummaryModel,
+      knowledgeBaseRef: dto.knowledgeBaseRef,
     });
+    // Auto-create an internal sandbox API key
+    const { entity: sandboxApiKey, rawKey } = agent.createApiKey('_sandbox');
+    try {
+      const encrypted = encryptTraceBody(tenantId, rawKey);
+      agent.sandboxKey = `encrypted:${encrypted.ciphertext}:${encrypted.iv}`;
+    } catch {
+      // If encryption isn't configured, store raw (dev environments)
+      agent.sandboxKey = rawKey;
+    }
     this.em.persist(agent);
+    this.em.persist(sandboxApiKey);
     await this.em.flush();
     return toAgentViewModel(agent);
   }
@@ -195,6 +207,7 @@ export class TenantManagementService {
     if (dto.conversationsEnabled !== undefined) agent.conversationsEnabled = dto.conversationsEnabled;
     if (dto.conversationTokenLimit !== undefined) agent.conversationTokenLimit = dto.conversationTokenLimit;
     if (dto.conversationSummaryModel !== undefined) agent.conversationSummaryModel = dto.conversationSummaryModel;
+    if (dto.knowledgeBaseRef !== undefined) agent.knowledgeBaseRef = dto.knowledgeBaseRef;
     agent.updatedAt = new Date();
     await this.em.flush();
 

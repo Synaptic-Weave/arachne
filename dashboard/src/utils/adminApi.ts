@@ -30,6 +30,7 @@ export interface AdminSettings {
   defaultEmbedderProvider: string | null;
   defaultEmbedderModel: string | null;
   defaultEmbedderApiKey: string | null;
+  defaultEmbedderProviderId: string | null;
   updatedAt: string;
   updatedByAdminId: string | null;
 }
@@ -108,6 +109,7 @@ export async function updateSettings(updates: {
   defaultEmbedderProvider?: string | null;
   defaultEmbedderModel?: string | null;
   defaultEmbedderApiKey?: string | null;
+  defaultEmbedderProviderId?: string | null;
 }): Promise<AdminSettings> {
   const response = await adminFetch('/v1/admin/settings', {
     method: 'PUT',

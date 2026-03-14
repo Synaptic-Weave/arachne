@@ -18,6 +18,13 @@ import { retrieveChunks, buildRagContext } from './rag/retrieval.js';
 // RAG context injection
 // ---------------------------------------------------------------------------
 
+export interface RagSource {
+  rank: number;
+  sourcePath?: string;
+  similarityScore: number;
+  contentPreview: string;
+}
+
 export interface RagInjectionResult {
   knowledgeBaseId?: string;
   ragRetrievalLatencyMs?: number;
@@ -28,6 +35,7 @@ export interface RagInjectionResult {
   avgChunkSimilarity?: number;
   ragStageFailed?: string;
   fallbackToNoRag?: boolean;
+  sources?: RagSource[];
 }
 
 const RAG_TOP_K = 5;
@@ -44,8 +52,11 @@ export async function injectRagContext(
   em: EntityManager,
 ): Promise<{ body: any; ragResult: RagInjectionResult }> {
   if (!tenant.knowledgeBaseRef) {
+    console.log(`[rag] no knowledgeBaseRef on tenant context — skipping RAG`);
     return { body, ragResult: {} };
   }
+
+  console.log(`[rag] resolving KB artifact '${tenant.knowledgeBaseRef}' for tenant ${tenant.tenantId}`);
 
   // Resolve KB artifact by name for this tenant
   let artifact: Artifact | null = null;
@@ -65,6 +76,8 @@ export async function injectRagContext(
     return { body, ragResult: { ragStageFailed: 'retrieval', fallbackToNoRag: true } };
   }
 
+  console.log(`[rag] found artifact id=${artifact.id}, chunkCount=${(artifact as any).chunkCount ?? '?'}`);
+
   // Extract user query from the last user message
   const messages: any[] = Array.isArray(body.messages) ? body.messages : [];
   const lastUserMessage = [...messages].reverse().find((m: any) => m.role === 'user');
@@ -74,8 +87,11 @@ export async function injectRagContext(
       : JSON.stringify(lastUserMessage?.content ?? '');
 
   if (!queryText) {
+    console.log('[rag] no user message found — skipping retrieval');
     return { body, ragResult: { ragStageFailed: 'none', fallbackToNoRag: false } };
   }
+
+  console.log(`[rag] query: "${queryText.substring(0, 100)}${queryText.length > 100 ? '…' : ''}"`);
 
   // Retrieve chunks
   let retrievalResult;
@@ -104,7 +120,13 @@ export async function injectRagContext(
 
   const { chunks, embeddingLatencyMs, vectorSearchLatencyMs, totalRagLatencyMs } = retrievalResult;
 
+  console.log(`[rag] retrieved ${chunks.length} chunks in ${totalRagLatencyMs}ms (embed: ${embeddingLatencyMs}ms, search: ${vectorSearchLatencyMs}ms)`);
+  for (const chunk of chunks) {
+    console.log(`[rag]   [${chunk.rank}] score=${chunk.similarityScore.toFixed(4)} source=${chunk.sourcePath ?? '-'} content="${chunk.content.substring(0, 80)}…"`);
+  }
+
   if (chunks.length === 0) {
+    console.warn('[rag] no chunks returned from vector search');
     return {
       body,
       ragResult: {
@@ -166,6 +188,12 @@ export async function injectRagContext(
       avgChunkSimilarity,
       ragStageFailed: 'none',
       fallbackToNoRag: false,
+      sources: chunks.map(c => ({
+        rank: c.rank,
+        sourcePath: c.sourcePath,
+        similarityScore: c.similarityScore,
+        contentPreview: c.content.substring(0, 150),
+      })),
     },
   };
 }

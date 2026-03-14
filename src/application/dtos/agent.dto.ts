@@ -27,6 +27,7 @@ export interface CreateAgentDto {
   conversationsEnabled?: boolean;
   conversationTokenLimit?: number;
   conversationSummaryModel?: string | null;
+  knowledgeBaseRef?: string | null;
 }
 
 export interface UpdateAgentDto {
@@ -40,6 +41,7 @@ export interface UpdateAgentDto {
   conversationsEnabled?: boolean;
   conversationTokenLimit?: number;
   conversationSummaryModel?: string | null;
+  knowledgeBaseRef?: string | null;
 }
 
 export interface ApiKeyViewModel {

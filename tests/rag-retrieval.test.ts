@@ -97,7 +97,8 @@ describe('retrieveChunks', () => {
 
     await retrieveChunks('query', 'artifact-42', 3, 'tenant-1', undefined, em);
 
-    const [, params] = (knex.raw as ReturnType<typeof vi.fn>).mock.calls[0];
+    // calls[0] is the chunk count query, calls[1] is the vector search
+    const [, params] = (knex.raw as ReturnType<typeof vi.fn>).mock.calls[1];
     expect(params[0]).toBe('[0.1,0.2,0.3]');  // pgvector literal
     expect(params[1]).toBe('artifact-42');       // artifact_id
     expect(params[2]).toBe('[0.1,0.2,0.3]');  // repeated for ORDER BY
