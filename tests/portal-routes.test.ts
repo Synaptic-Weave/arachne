@@ -105,6 +105,7 @@ function buildMockUserMgmtSvc(): UserManagementService {
 
 function buildMockTenantMgmtSvc(): TenantManagementService {
   return {
+    findByOrgSlug: vi.fn().mockResolvedValue(null),
     listApiKeys: vi.fn().mockResolvedValue([]),
     createApiKey: vi.fn().mockResolvedValue({
       id: 'key-uuid', name: 'Test Key', keyPrefix: 'loom_test', status: 'active',
@@ -194,7 +195,7 @@ function buildMockPortalSvc(overrides: Partial<Record<string, any>> = {}): Porta
       row: {
         id: TEST_USER_ID, email: TEST_USER_EMAIL, role: 'owner',
         tenant_id: TEST_TENANT_ID, tenant_name: TEST_TENANT_NAME,
-        provider_config: null, available_models: null,
+        org_slug: 'existing-tenant', provider_config: null, available_models: null,
       },
       tenants: [{ tenant_id: TEST_TENANT_ID, tenant_name: TEST_TENANT_NAME, role: 'owner' }],
       agents: [{ id: TEST_AGENT_ID, name: TEST_AGENT_NAME }],
@@ -453,13 +454,14 @@ describe('GET /v1/portal/me', () => {
     expect(res.statusCode).toBe(200);
     const body = res.json<{
       user: { id: string; email: string; role: string };
-      tenant: { id: string; name: string };
+      tenant: { id: string; name: string; orgSlug: string };
       agents: unknown[];
       tenants: unknown[];
     }>();
     expect(body.user.id).toBe(TEST_USER_ID);
     expect(body.user.email).toBe(TEST_USER_EMAIL);
     expect(body.tenant.id).toBe(TEST_TENANT_ID);
+    expect(body.tenant.orgSlug).toBe('existing-tenant');
     expect(Array.isArray(body.agents)).toBe(true);
     expect(Array.isArray(body.tenants)).toBe(true);
   });
@@ -643,5 +645,106 @@ describe('GET /v1/portal/agents/:id', () => {
       url: `/v1/portal/agents/${TEST_AGENT_ID}`,
     });
     expect(res.statusCode).toBe(401);
+  });
+});
+
+// ── PATCH /v1/portal/settings (org name & slug) ────────────────────────────
+
+describe('PATCH /v1/portal/settings (org name & slug)', () => {
+  let app: FastifyInstance;
+  let tenantMgmtSvc: TenantManagementService;
+
+  beforeEach(async () => {
+    process.env.ENCRYPTION_MASTER_KEY = TEST_MASTER_KEY;
+    tenantMgmtSvc = buildMockTenantMgmtSvc();
+    app = await buildApp(buildMockPortalSvc(), buildMockConvSvc(), buildMockUserMgmtSvc(), tenantMgmtSvc);
+  });
+
+  afterEach(async () => {
+    await app.close();
+    delete process.env.ENCRYPTION_MASTER_KEY;
+  });
+
+  it('updates org name and slug', async () => {
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/v1/portal/settings',
+      headers: { authorization: `Bearer ${authToken()}` },
+      payload: { name: 'New Org Name', orgSlug: 'new-org-name' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ name?: string; orgSlug?: string }>();
+    expect(body.name).toBe('New Org Name');
+    expect(body.orgSlug).toBe('new-org-name');
+    expect(tenantMgmtSvc.updateSettings).toHaveBeenCalledWith(TEST_TENANT_ID, { name: 'New Org Name', orgSlug: 'new-org-name' });
+  });
+
+  it('updates only name without slug', async () => {
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/v1/portal/settings',
+      headers: { authorization: `Bearer ${authToken()}` },
+      payload: { name: 'Just a Name' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(tenantMgmtSvc.updateSettings).toHaveBeenCalledWith(TEST_TENANT_ID, { name: 'Just a Name' });
+  });
+
+  it('returns 400 for empty name', async () => {
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/v1/portal/settings',
+      headers: { authorization: `Bearer ${authToken()}` },
+      payload: { name: '  ' },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json<{ error: string }>().error).toContain('empty');
+  });
+
+  it('returns 400 for invalid slug', async () => {
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/v1/portal/settings',
+      headers: { authorization: `Bearer ${authToken()}` },
+      payload: { orgSlug: '-bad-slug-' },
+    });
+
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('returns 409 when slug is taken by another tenant', async () => {
+    (tenantMgmtSvc.findByOrgSlug as any).mockResolvedValue({ id: 'other-tenant-id' });
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/v1/portal/settings',
+      headers: { authorization: `Bearer ${authToken()}` },
+      payload: { orgSlug: 'taken-slug' },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json<{ error: string }>().error).toContain('already taken');
+  });
+
+  it('returns 401 without auth', async () => {
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/v1/portal/settings',
+      payload: { name: 'Test' },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('returns 403 for non-owner', async () => {
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/v1/portal/settings',
+      headers: { authorization: `Bearer ${authToken(TEST_USER_ID, TEST_TENANT_ID, 'member')}` },
+      payload: { name: 'Test' },
+    });
+    expect(res.statusCode).toBe(403);
   });
 });

@@ -34,7 +34,26 @@ A table with:
 
 ### Creating a Knowledge Base
 
-Knowledge bases are created using the Arachne CLI, not the portal:
+Knowledge bases can be created directly in the portal or via the CLI.
+
+#### Via the Portal
+
+1. Click the **+ New Knowledge Base** button in the page header
+2. Enter a **name** for the knowledge base (e.g., `product-docs`, `support-kb`)
+3. **Drag and drop files** into the drop zone, or click to browse
+   - Accepted formats: `.txt`, `.md`, `.json`, `.csv`
+   - Multiple files can be uploaded at once
+4. Review the selected files list (click **x** to remove any)
+5. Click **Create**
+
+The portal will automatically:
+- Chunk all file contents (650 tokens per chunk, 120 token overlap)
+- Generate embeddings using the configured system embedder
+- Push the knowledge base to the registry with a `latest` tag
+
+**Requirements:** A system embedder must be configured (`SYSTEM_EMBEDDER_PROVIDER`, `SYSTEM_EMBEDDER_MODEL`, `SYSTEM_EMBEDDER_API_KEY` env vars). If not configured, an error message will appear.
+
+#### Via the CLI
 
 ```bash
 # 1. Define a YAML spec
@@ -67,7 +86,7 @@ arachne deploy my-org/my-kb:v1.0 \
   --environment production
 ```
 
-The KB will appear on this page once deployed.
+The KB will appear on this page once created or deployed.
 
 See [docs/registry-api.md](registry-api.md) and [docs/cli.md](cli.md) for full details.
 
@@ -234,11 +253,15 @@ Apply filters to view metrics for specific agents, environments, or time ranges.
 
 ## Settings
 
-The **Settings** page manages tenant-level configuration.
+The **Settings** page manages organization identity and tenant-level configuration. It is divided into two sections: **Organization** (name and slug) and **Org Defaults** (provider config and available models).
 
-### Organization Slug
+### Organization Name & Slug
 
-The **Organization Slug** is a URL-safe identifier for your organization, used in artifact references and API calls. Every organization must have a unique slug to prevent artifact name collisions in the registry.
+The **Organization** section lets you view and edit your organization's display name and URL slug.
+
+**Organization Name:** The display name of your organization, shown in the portal and used as the default seed for generating a slug.
+
+**Organization Slug:** A URL-safe identifier for your organization, used in artifact references and API calls. Every organization must have a unique slug to prevent artifact name collisions in the registry.
 
 **What it is:**
 
@@ -270,18 +293,18 @@ The org slug appears in all artifact references:
 - `org_with_underscore` (underscores)
 - `ab` (too short)
 
-### How to Set or Update Your Org Slug
+### How to Set or Update Your Org Name & Slug
 
 **Via the Portal:**
 
-1. Go to **Settings** > **Organization**
-2. Look for the **Organization Slug** field
-3. Click **Edit** (or **Set Slug** if not yet configured)
-4. Enter your desired slug
-5. The system validates the slug in real-time
-6. Click **Save**
+1. Go to **Settings**
+2. In the **Organization** card:
+   - Edit the **Name** field — typing auto-generates the slug if it hasn't been manually set
+   - Edit the **Slug** field directly, or click **Auto-generate** to regenerate from the name
+   - Inline validation shows errors as you type
+3. Click **Save**
 
-The slug becomes effective immediately. All future artifact publishes must use the new slug.
+Both the name and slug are updated immediately. All future artifact publishes will use the new slug.
 
 **Via the CLI:**
 

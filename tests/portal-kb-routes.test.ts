@@ -15,7 +15,7 @@ import { signJwt } from '../src/auth/jwtUtils.js';
 
 // ── Hoisted mocks (must run before module imports) ───────────────────────────
 
-const { mockEm, mockProvisionInstance } = vi.hoisted(() => {
+const { mockEm, mockProvisionInstance, mockWeaveService, mockEmbeddingAgentService, mockRegistryServiceInstance } = vi.hoisted(() => {
   const mockProvisionInstance = {
     listDeployments: vi.fn(),
     getDeployment: vi.fn(),
@@ -34,7 +34,21 @@ const { mockEm, mockProvisionInstance } = vi.hoisted(() => {
     populate: vi.fn(),
   };
 
-  return { mockEm, mockProvisionInstance };
+  const mockWeaveService = {
+    chunkText: vi.fn(),
+    embedTexts: vi.fn(),
+    computePreprocessingHash: vi.fn(),
+  };
+
+  const mockEmbeddingAgentService = {
+    resolveEmbedder: vi.fn(),
+  };
+
+  const mockRegistryServiceInstance = {
+    push: vi.fn(),
+  };
+
+  return { mockEm, mockProvisionInstance, mockWeaveService, mockEmbeddingAgentService, mockRegistryServiceInstance };
 });
 
 vi.mock('../src/orm.js', () => ({
@@ -48,6 +62,18 @@ vi.mock('../src/services/ProvisionService.js', () => ({
 vi.mock('../src/providers/registry.js', () => ({
   evictProvider: vi.fn(),
   getProviderForTenant: vi.fn(),
+}));
+
+vi.mock('../src/services/WeaveService.js', () => ({
+  WeaveService: vi.fn(() => mockWeaveService),
+}));
+
+vi.mock('../src/services/EmbeddingAgentService.js', () => ({
+  EmbeddingAgentService: vi.fn(() => mockEmbeddingAgentService),
+}));
+
+vi.mock('../src/services/RegistryService.js', () => ({
+  RegistryService: vi.fn(() => mockRegistryServiceInstance),
 }));
 
 // ── Now import the route registrar (after mocks are set up) ──────────────────
@@ -146,7 +172,7 @@ describe('GET /v1/portal/knowledge-bases', () => {
     await app.close();
   });
 
-  it('returns 200 with list of knowledge bases', async () => {
+  it('returns 200 with list of knowledge bases including org, version, vectorSpace', async () => {
     const res = await app.inject({
       method: 'GET',
       url: '/v1/portal/knowledge-bases',
@@ -154,11 +180,14 @@ describe('GET /v1/portal/knowledge-bases', () => {
     });
 
     expect(res.statusCode).toBe(200);
-    const body = res.json<{ knowledgeBases: { id: string; name: string }[] }>();
+    const body = res.json<{ knowledgeBases: { id: string; name: string; org: string; version: string; vectorSpace: string }[] }>();
     expect(Array.isArray(body.knowledgeBases)).toBe(true);
     expect(body.knowledgeBases.length).toBe(1);
     expect(body.knowledgeBases[0].id).toBe(TEST_KB_ID);
     expect(body.knowledgeBases[0].name).toBe('my-docs');
+    expect(body.knowledgeBases[0].org).toBe('myorg');
+    expect(body.knowledgeBases[0].version).toBe('v1');
+    expect(body.knowledgeBases[0].vectorSpace).toBe('openai/text-embedding-3-small (1536d)');
   });
 
   it('returns 401 without an auth token', async () => {
@@ -399,5 +428,154 @@ describe('DELETE /v1/portal/deployments/:id', () => {
       url: `/v1/portal/deployments/${TEST_DEPLOYMENT_ID}`,
     });
     expect(res.statusCode).toBe(401);
+  });
+});
+
+// ── POST /v1/portal/knowledge-bases ─────────────────────────────────────────
+
+import FormData from 'form-data';
+
+describe('POST /v1/portal/knowledge-bases', () => {
+  let app: FastifyInstance;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    mockEm.flush.mockResolvedValue(undefined);
+    mockEm.findOne.mockResolvedValue({ id: TEST_TENANT_ID, orgSlug: 'myorg' });
+    mockEmbeddingAgentService.resolveEmbedder.mockResolvedValue({
+      provider: 'openai',
+      model: 'text-embedding-3-small',
+      dimensions: 1536,
+      apiKey: 'sk-test',
+    });
+    mockWeaveService.chunkText.mockReturnValue(['chunk one', 'chunk two']);
+    mockWeaveService.embedTexts.mockResolvedValue([[0.1, 0.2], [0.3, 0.4]]);
+    mockWeaveService.computePreprocessingHash.mockReturnValue('hash123');
+    mockRegistryServiceInstance.push.mockResolvedValue({
+      artifactId: 'new-kb-id',
+      ref: 'myorg/test-kb:latest',
+    });
+    app = await buildApp();
+  });
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  it('creates a knowledge base from multipart upload', async () => {
+    const form = new FormData();
+    form.append('name', 'test-kb');
+    form.append('files', Buffer.from('Hello world document'), { filename: 'test.txt', contentType: 'text/plain' });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/portal/knowledge-bases',
+      headers: {
+        authorization: `Bearer ${authToken()}`,
+        ...form.getHeaders(),
+      },
+      payload: form.getBuffer(),
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ id: string; name: string; org: string; ref: string; chunkCount: number }>();
+    expect(body.id).toBe('new-kb-id');
+    expect(body.name).toBe('test-kb');
+    expect(body.org).toBe('myorg');
+    expect(body.ref).toBe('myorg/test-kb:latest');
+    expect(body.chunkCount).toBe(2);
+    expect(mockWeaveService.chunkText).toHaveBeenCalled();
+    expect(mockWeaveService.embedTexts).toHaveBeenCalled();
+    expect(mockRegistryServiceInstance.push).toHaveBeenCalled();
+  });
+
+  it('returns 400 when name is missing', async () => {
+    const form = new FormData();
+    form.append('files', Buffer.from('content'), { filename: 'test.txt', contentType: 'text/plain' });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/portal/knowledge-bases',
+      headers: {
+        authorization: `Bearer ${authToken()}`,
+        ...form.getHeaders(),
+      },
+      payload: form.getBuffer(),
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json<{ error: string }>().error).toContain('Name is required');
+  });
+
+  it('returns 400 when no files are uploaded', async () => {
+    const form = new FormData();
+    form.append('name', 'test-kb');
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/portal/knowledge-bases',
+      headers: {
+        authorization: `Bearer ${authToken()}`,
+        ...form.getHeaders(),
+      },
+      payload: form.getBuffer(),
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json<{ error: string }>().error).toContain('file');
+  });
+
+  it('returns 400 when embedder is not configured', async () => {
+    mockEmbeddingAgentService.resolveEmbedder.mockRejectedValue(new Error('not configured'));
+
+    const form = new FormData();
+    form.append('name', 'test-kb');
+    form.append('files', Buffer.from('content'), { filename: 'test.txt', contentType: 'text/plain' });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/portal/knowledge-bases',
+      headers: {
+        authorization: `Bearer ${authToken()}`,
+        ...form.getHeaders(),
+      },
+      payload: form.getBuffer(),
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json<{ error: string }>().error).toContain('Embedding not configured');
+  });
+
+  it('returns 401 without auth', async () => {
+    const form = new FormData();
+    form.append('name', 'test-kb');
+    form.append('files', Buffer.from('content'), { filename: 'test.txt', contentType: 'text/plain' });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/portal/knowledge-bases',
+      headers: form.getHeaders(),
+      payload: form.getBuffer(),
+    });
+
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('returns 403 for non-owner role', async () => {
+    const form = new FormData();
+    form.append('name', 'test-kb');
+    form.append('files', Buffer.from('content'), { filename: 'test.txt', contentType: 'text/plain' });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/portal/knowledge-bases',
+      headers: {
+        authorization: `Bearer ${authToken(TEST_USER_ID, TEST_TENANT_ID, 'member')}`,
+        ...form.getHeaders(),
+      },
+      payload: form.getBuffer(),
+    });
+
+    expect(res.statusCode).toBe(403);
   });
 });

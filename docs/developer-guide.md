@@ -18,6 +18,33 @@ This guide covers source layout, API extensions, database schema, and the techni
 | `src/domain/` | MikroORM entities and repositories |
 | `src/application/services/` | Application services (Portal, Admin, Dashboard) |
 
+## Portal API
+
+### POST /v1/portal/knowledge-bases (multipart)
+
+Create a knowledge base by uploading files directly. Requires owner role.
+
+**Multipart fields:**
+- `name` (string, required) — Knowledge base name
+- `files` (file, required, multiple) — Document files (.txt, .md, .json, .csv)
+
+**Processing:** The server chunks uploaded text (650 tokens, 120 overlap), generates embeddings via the configured system embedder, and pushes the result to the registry.
+
+**Response:**
+```json
+{
+  "id": "artifact-uuid",
+  "name": "my-kb",
+  "org": "my-org",
+  "ref": "my-org/my-kb:latest",
+  "chunkCount": 42
+}
+```
+
+### PATCH /v1/portal/settings
+
+Accepts `name` (string) and `orgSlug` (string) fields in addition to provider config. Both are validated server-side. The slug must be unique across all tenants.
+
 ## API Extensions
 
 Arachne proxies OpenAI's `/v1/chat/completions` endpoint with the following extensions:

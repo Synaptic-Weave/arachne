@@ -134,11 +134,32 @@ describe('Portal app smoke tests', () => {
   });
 
   // -------------------------------------------------------------------------
-  it('settings page renders provider config form', async () => {
+  it('settings page renders org identity section', async () => {
     await navigateTo(page, `${BASE_URL}/app/settings`, email, password);
     await screenshotIfDocsMode(page, 'portal-settings', 'Portal settings page', 'Settings');
     const content = await page.content();
+    expect(content).toMatch(/Organization/i);
+    expect(content).toMatch(/Slug/i);
+  });
+
+  // -------------------------------------------------------------------------
+  it('settings page renders provider config form', async () => {
+    await navigateTo(page, `${BASE_URL}/app/settings`, email, password);
+    const content = await page.content();
     expect(content).toMatch(/provider|OpenAI|Azure|Ollama|API/i);
+  });
+
+  // -------------------------------------------------------------------------
+  it('settings org name and slug inputs are populated', async () => {
+    await navigateTo(page, `${BASE_URL}/app/settings`, email, password);
+    await waitForVisible(page, 'input[placeholder="My Organization"]', 10000);
+    const nameInput = page.locator('input[placeholder="My Organization"]');
+    const slugInput = page.locator('input[placeholder="my-organization"]');
+    expect(await nameInput.count()).toBe(1);
+    expect(await slugInput.count()).toBe(1);
+    // Name should be non-empty (populated from tenant)
+    const nameValue = await nameInput.inputValue();
+    expect(nameValue.length).toBeGreaterThan(0);
   });
 
   // -------------------------------------------------------------------------
@@ -147,6 +168,29 @@ describe('Portal app smoke tests', () => {
     await waitForVisible(page, 'select, input[name*="provider" i], [data-testid="provider-select"]', 10000);
     const providerInput = page.locator('select, input[name*="provider" i], [data-testid="provider-select"]').first();
     expect(await providerInput.count()).toBeGreaterThan(0);
+  });
+
+  // -------------------------------------------------------------------------
+  it('knowledge bases page renders with create button', async () => {
+    await navigateTo(page, `${BASE_URL}/app/knowledge-bases`, email, password);
+    await screenshotIfDocsMode(page, 'portal-knowledge-bases', 'Portal knowledge bases page', 'Knowledge Bases');
+    const content = await page.content();
+    expect(content).toMatch(/Knowledge Base/i);
+    expect(content).toMatch(/New Knowledge Base/i);
+  });
+
+  // -------------------------------------------------------------------------
+  it('knowledge bases creation panel opens on button click', async () => {
+    await navigateTo(page, `${BASE_URL}/app/knowledge-bases`, email, password);
+    await waitForVisible(page, ':text("New Knowledge Base")', 10000);
+    await page.locator(':text("New Knowledge Base")').click();
+
+    // Creation panel should appear with name input and drop zone
+    await waitForVisible(page, 'input[placeholder="my-knowledge-base"]', 5000);
+    const content = await page.content();
+    expect(content).toMatch(/Create Knowledge Base/i);
+    expect(content).toMatch(/Drag.*drop|click to browse/i);
+    expect(content).toMatch(/\.txt.*\.md.*\.json.*\.csv/i);
   });
 
   // -------------------------------------------------------------------------

@@ -92,6 +92,9 @@ export const api = {
   updateSettings: (token: string, body: ProviderConfig & { availableModels?: string[] | null }) =>
     request<{ providerConfig: ProviderConfigSafe }>('PATCH', '/v1/portal/settings', body, token),
 
+  updateOrgSettings: (token: string, body: { name?: string; orgSlug?: string }) =>
+    request<{ name?: string; orgSlug?: string }>('PATCH', '/v1/portal/settings', body, token),
+
   listApiKeys: (token: string) =>
     request<{ apiKeys: ApiKeyEntry[] }>('GET', '/v1/portal/api-keys', undefined, token),
 
@@ -147,6 +150,22 @@ export const api = {
   deleteKnowledgeBase: (token: string, id: string) =>
     request<void>('DELETE', `/v1/portal/knowledge-bases/${id}`, undefined, token),
 
+  createKnowledgeBase: async (token: string, name: string, files: File[]) => {
+    const formData = new FormData();
+    formData.append('name', name);
+    for (const file of files) {
+      formData.append('files', file);
+    }
+    const res = await fetch(`${API_BASE}/v1/portal/knowledge-bases`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to create knowledge base');
+    return data as { id: string; name: string; org: string; ref: string; chunkCount: number };
+  },
+
   // Deployments
   listDeployments: (token: string) =>
     request<{ deployments: Deployment[] }>('GET', '/v1/portal/deployments', undefined, token),
@@ -174,6 +193,7 @@ export const api = {
 export interface User { id: string; email: string; role: string; }
 export interface Tenant { id: string; name: string; }
 export interface TenantDetail extends Tenant {
+  orgSlug?: string | null;
   providerConfig: ProviderConfigSafe;
   availableModels?: string[] | null;
 }

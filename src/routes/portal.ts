@@ -1,4 +1,6 @@
+import { createHash } from 'node:crypto';
 import { FastifyInstance } from 'fastify';
+import multipart from '@fastify/multipart';
 import { registerPortalAuthMiddleware } from '../middleware/portalAuth.js';
 import { invalidateCachedKey } from '../auth.js';
 import type { TenantContext } from '../auth.js';
@@ -15,6 +17,8 @@ import { isSignupsEnabled } from '../config.js';
 import { validateOrgSlug } from '../utils/slug.js';
 import { RegistryService } from '../services/RegistryService.js';
 import { ProvisionService } from '../services/ProvisionService.js';
+import { WeaveService } from '../services/WeaveService.js';
+import { EmbeddingAgentService } from '../services/EmbeddingAgentService.js';
 import { orm } from '../orm.js';
 
 export function registerPortalRoutes(
@@ -24,6 +28,8 @@ export function registerPortalRoutes(
   userMgmtSvc: UserManagementService,
   tenantMgmtSvc: TenantManagementService
 ): void {
+  fastify.register(multipart, { limits: { fileSize: 50 * 1024 * 1024 } });
+
   const PORTAL_BASE_URL = process.env.PORTAL_BASE_URL ?? 'http://localhost:3000';
 
   // ── Helpers ──────────────────────────────────────────────────────────────
@@ -199,6 +205,7 @@ export function registerPortalRoutes(
       tenant: {
         id: row.tenant_id,
         name: row.tenant_name,
+        orgSlug: row.org_slug,
         providerConfig,
         availableModels: row.available_models ?? null,
       },
@@ -211,6 +218,7 @@ export function registerPortalRoutes(
   // ── PATCH /v1/portal/settings ─────────────────────────────────────────────
   fastify.patch<{
     Body: {
+      name?: string;
       provider?: string;
       apiKey?: string;
       baseUrl?: string;
@@ -221,21 +229,29 @@ export function registerPortalRoutes(
     };
   }>('/v1/portal/settings', { preHandler: ownerRequired }, async (request, reply) => {
     const { tenantId } = request.portalUser!;
-    const { provider, apiKey, baseUrl, deployment, apiVersion, availableModels, orgSlug } = request.body;
+    const { name, provider, apiKey, baseUrl, deployment, apiVersion, availableModels, orgSlug } = request.body;
 
-    // Handle orgSlug update
-    if (orgSlug !== undefined) {
-      const validation = validateOrgSlug(orgSlug);
-      if (!validation.valid) {
-        return reply.code(400).send({ error: validation.error });
+    // Handle name and/or orgSlug update
+    if (name !== undefined || orgSlug !== undefined) {
+      const updates: { name?: string; orgSlug?: string } = {};
+      if (name !== undefined) {
+        if (!name.trim()) return reply.code(400).send({ error: 'Name cannot be empty' });
+        updates.name = name.trim();
       }
-      const existing = await tenantMgmtSvc.findByOrgSlug(orgSlug);
-      if (existing && existing.id !== tenantId) {
-        return reply.code(409).send({ error: 'This slug is already taken' });
+      if (orgSlug !== undefined) {
+        const validation = validateOrgSlug(orgSlug);
+        if (!validation.valid) {
+          return reply.code(400).send({ error: validation.error });
+        }
+        const existing = await tenantMgmtSvc.findByOrgSlug(orgSlug);
+        if (existing && existing.id !== tenantId) {
+          return reply.code(409).send({ error: 'This slug is already taken' });
+        }
+        updates.orgSlug = orgSlug;
       }
-      await tenantMgmtSvc.updateSettings(tenantId, { orgSlug });
+      await tenantMgmtSvc.updateSettings(tenantId, updates);
       if (!provider) {
-        return reply.send({ orgSlug });
+        return reply.send({ name: updates.name, orgSlug: updates.orgSlug });
       }
     }
 
@@ -1277,16 +1293,21 @@ export function registerPortalRoutes(
       { populate: ['tags', 'vectorSpace'], orderBy: { createdAt: 'DESC' } },
     );
     return reply.send({
-      knowledgeBases: artifacts.map((a) => ({
-        id: a.id,
-        name: a.name,
-        tags: a.tags.map((t: any) => t.tag),
-        chunkCount: a.chunkCount,
-        createdAt: a.createdAt,
-        vectorSpace: a.vectorSpace
-          ? { provider: (a.vectorSpace as any).provider, model: (a.vectorSpace as any).model, dimensions: (a.vectorSpace as any).dimensions }
-          : null,
-      })),
+      knowledgeBases: artifacts.map((a) => {
+        const vs = a.vectorSpace as any;
+        return {
+          id: a.id,
+          org: a.org,
+          name: a.name,
+          version: a.version,
+          tags: a.tags.map((t: any) => t.tag),
+          chunkCount: a.chunkCount,
+          createdAt: a.createdAt,
+          vectorSpace: vs
+            ? `${vs.provider}/${vs.model} (${vs.dimensions}d)`
+            : null,
+        };
+      }),
     });
   });
 
@@ -1349,6 +1370,123 @@ export function registerPortalRoutes(
       return reply.send({ deleted: true });
     },
   );
+
+  // ── POST /v1/portal/knowledge-bases ────────────────────────────────────────
+  const weaveService = new WeaveService();
+  const embeddingAgentService = new EmbeddingAgentService();
+
+  fastify.post('/v1/portal/knowledge-bases', { preHandler: ownerRequired }, async (request, reply) => {
+    const { tenantId } = request.portalUser!;
+    const em = orm.em.fork();
+
+    // Parse multipart form data
+    const parts = request.parts();
+    let name: string | undefined;
+    const fileBuffers: Array<{ filename: string; content: Buffer }> = [];
+
+    for await (const part of parts) {
+      if (part.type === 'field' && part.fieldname === 'name') {
+        name = (part.value as string).trim();
+      } else if (part.type === 'file' && part.fieldname === 'files') {
+        const chunks: Buffer[] = [];
+        for await (const chunk of part.file) {
+          chunks.push(chunk);
+        }
+        fileBuffers.push({ filename: part.filename, content: Buffer.concat(chunks) });
+      }
+    }
+
+    if (!name) return reply.code(400).send({ error: 'Name is required' });
+    if (fileBuffers.length === 0) return reply.code(400).send({ error: 'At least one file is required' });
+
+    // Resolve embedder config
+    let embedderConfig;
+    try {
+      embedderConfig = await embeddingAgentService.resolveEmbedder(undefined, tenantId, em);
+    } catch (err: any) {
+      return reply.code(400).send({ error: `Embedding not configured: ${err.message}` });
+    }
+
+    const { provider, model, apiKey, dimensions } = embedderConfig;
+    if (!apiKey) return reply.code(400).send({ error: 'Embedding API key not configured' });
+
+    // Chunk all file contents
+    const TOKEN_SIZE = 650;
+    const OVERLAP = 120;
+    const rawChunks: Array<{ content: string; sourcePath: string }> = [];
+    for (const file of fileBuffers) {
+      const text = file.content.toString('utf8');
+      const textChunks = weaveService.chunkText(text, TOKEN_SIZE, OVERLAP);
+      for (const chunk of textChunks) {
+        rawChunks.push({ content: chunk, sourcePath: file.filename });
+      }
+    }
+
+    if (rawChunks.length === 0) return reply.code(400).send({ error: 'No content found in uploaded files' });
+
+    // Generate embeddings
+    const texts = rawChunks.map((c) => c.content);
+    let embeddings: number[][];
+    try {
+      embeddings = await weaveService.embedTexts(texts, provider, model, apiKey);
+    } catch (err: any) {
+      return reply.code(500).send({ error: `Embedding generation failed: ${err.message}` });
+    }
+
+    // Build chunks with embeddings
+    const chunks = rawChunks.map((c, i) => ({
+      content: c.content,
+      sourcePath: c.sourcePath,
+      tokenCount: Math.ceil(c.content.length / 4),
+      embedding: embeddings[i] ?? [],
+    }));
+
+    // Compute SHA-256 for idempotency
+    const hashInput = name + fileBuffers.map((f) => f.content.toString('utf8')).join('');
+    const sha256 = createHash('sha256').update(hashInput).digest('hex');
+
+    const preprocessingHash = weaveService.computePreprocessingHash({
+      provider,
+      model,
+      tokenSize: TOKEN_SIZE,
+      overlap: OVERLAP,
+    });
+
+    // Resolve tenant org slug
+    const { Tenant: TenantEntity } = await import('../domain/entities/Tenant.js');
+    const tenant = await em.findOne(TenantEntity, { id: tenantId });
+    const org = tenant?.orgSlug ?? tenantId;
+
+    // Push via RegistryService
+    const { artifactId, ref } = await registrySvc.push(
+      {
+        tenantId,
+        org,
+        name,
+        tag: 'latest',
+        kind: 'KnowledgeBase',
+        bundleData: Buffer.from('portal-upload'),
+        sha256,
+        chunkCount: chunks.length,
+        chunks,
+        vectorSpaceData: {
+          provider,
+          model,
+          dimensions,
+          preprocessingHash,
+        },
+      },
+      em,
+    );
+
+    return reply.send({
+      id: artifactId,
+      name,
+      org,
+      ref,
+      chunkCount: chunks.length,
+    });
+  });
 
   // ── Deployments ───────────────────────────────────────────────────────────
 
