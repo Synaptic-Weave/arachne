@@ -29,6 +29,16 @@ resource "azurerm_static_web_app_custom_domain" "dev_site" {
   depends_on = [azurerm_dns_txt_record.dev_site_validation]
 }
 
+# Apex A record alias for arachne-ai.dev → Static Web App
+resource "azurerm_dns_a_record" "dev_site_apex" {
+  name                = "@"
+  zone_name           = var.dns_zone_name_dev
+  resource_group_name = var.dns_resource_group_name
+  ttl                 = 3600
+
+  target_resource_id = azurerm_static_web_app.dev_site.id
+}
+
 # CNAME for www.arachne-ai.dev → static web app default hostname
 resource "azurerm_dns_cname_record" "dev_site_www" {
   name                = "www"
