@@ -126,8 +126,6 @@ module "static_site" {
   key_vault_id            = module.keyvault.key_vault_id
   gateway_fqdn            = trimprefix(module.container_apps.gateway_url, "https://")
   portal_fqdn             = trimprefix(module.container_apps.portal_url, "https://")
-  dev_gateway_fqdn        = var.dev_gateway_fqdn
-  dev_portal_fqdn         = var.dev_portal_fqdn
   depends_on              = [module.keyvault, module.container_apps]
 }
 

@@ -92,14 +92,3 @@ variable "dns_resource_group_name" {
   default     = "rg-arachne-dns"
 }
 
-variable "dev_gateway_fqdn" {
-  description = "FQDN of the dev gateway Container App (for DNS CNAME)"
-  type        = string
-  default     = ""
-}
-
-variable "dev_portal_fqdn" {
-  description = "FQDN of the dev portal Container App (for DNS CNAME)"
-  type        = string
-  default     = ""
-}

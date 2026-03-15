@@ -97,42 +97,27 @@ resource "azurerm_dns_txt_record" "prod_site_verification" {
   }
 }
 
-# ── DNS: app.arachne-ai.com (portal SPA → Container App) ─────────────────
+# ── DNS: app.{domain} (portal SPA → Container App) ───────────────────────
+# Uses the current workspace's Container App FQDN for the matching domain.
+
+locals {
+  dns_zone = var.environment == "prod" ? var.dns_zone_name_com : var.dns_zone_name_dev
+}
 
 resource "azurerm_dns_cname_record" "portal_app" {
   name                = "app"
-  zone_name           = var.dns_zone_name_com
+  zone_name           = local.dns_zone
   resource_group_name = var.dns_resource_group_name
   ttl                 = 3600
   record              = var.portal_fqdn
 }
 
-# ── DNS: api.arachne-ai.com (gateway API → Container App) ────────────────
+# ── DNS: api.{domain} (gateway API → Container App) ──────────────────────
 
 resource "azurerm_dns_cname_record" "gateway_api" {
   name                = "api"
-  zone_name           = var.dns_zone_name_com
+  zone_name           = local.dns_zone
   resource_group_name = var.dns_resource_group_name
   ttl                 = 3600
   record              = var.gateway_fqdn
-}
-
-# ── DNS: app.arachne-ai.dev (dev portal → Container App) ─────────────────
-
-resource "azurerm_dns_cname_record" "dev_portal_app" {
-  name                = "app"
-  zone_name           = var.dns_zone_name_dev
-  resource_group_name = var.dns_resource_group_name
-  ttl                 = 3600
-  record              = var.dev_portal_fqdn
-}
-
-# ── DNS: api.arachne-ai.dev (dev gateway → Container App) ────────────────
-
-resource "azurerm_dns_cname_record" "dev_gateway_api" {
-  name                = "api"
-  zone_name           = var.dns_zone_name_dev
-  resource_group_name = var.dns_resource_group_name
-  ttl                 = 3600
-  record              = var.dev_gateway_fqdn
 }

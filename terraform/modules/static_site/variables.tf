@@ -35,22 +35,10 @@ variable "key_vault_id" {
 
 variable "gateway_fqdn" {
   type        = string
-  description = "FQDN of the production gateway Container App"
+  description = "FQDN of the gateway Container App for this environment"
 }
 
 variable "portal_fqdn" {
   type        = string
-  description = "FQDN of the production portal Container App"
-}
-
-variable "dev_gateway_fqdn" {
-  type        = string
-  description = "FQDN of the dev gateway Container App"
-  default     = ""
-}
-
-variable "dev_portal_fqdn" {
-  type        = string
-  description = "FQDN of the dev portal Container App"
-  default     = ""
+  description = "FQDN of the portal Container App for this environment"
 }
