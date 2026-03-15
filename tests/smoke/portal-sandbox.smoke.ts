@@ -21,6 +21,7 @@ import {
   portalLogin,
   waitForVisible,
   waitForAppReady,
+  screenshotIfDocsMode,
   uniqueEmail,
   uniqueName,
   BASE_URL,
@@ -84,6 +85,7 @@ describe('Portal sandbox smoke tests', () => {
     await page.goto(`${BASE_URL}/app/sandbox`);
     await ensureAuth();
     await waitForVisible(page, 'body', 5000);
+    await screenshotIfDocsMode(page, 'portal-sandbox', 'Portal sandbox page', 'Sandbox');
     const content = await page.content();
     expect(content).toMatch(/Sandbox/i);
   });

@@ -55,12 +55,12 @@ engineering/code-assist:staging
 
 ## Bundle Format
 
-Artifacts are published as `.tgz` (tar + gzip) bundles with the following structure:
+Artifacts are published as `.orb` (tar + gzip) bundles with the following structure:
 
 ### KnowledgeBase Bundle
 
 ```
-kb-name.tgz/
+kb-name.orb/
 ├── manifest.json           # Metadata (kind, name, version, chunkCount, vectorSpace)
 └── chunks/
     ├── 0.json             # { content, sourcePath, tokenCount, embedding }
@@ -87,7 +87,7 @@ kb-name.tgz/
 ### Agent / EmbeddingAgent Bundle
 
 ```
-agent-name.tgz/
+agent-name.orb/
 ├── manifest.json           # { kind, name, version }
 └── spec.json              # Full YAML spec as JSON
 ```
@@ -110,7 +110,7 @@ Publish a new artifact version or overwrite an existing tag.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `bundle` | file | ✓ | Gzipped tar bundle (.tgz) |
+| `bundle` | file | ✓ | Gzipped tar bundle (.orb) |
 | `name` | string | ✓ | Artifact name (e.g., `my-kb`) |
 | `tag` | string | | Version tag (defaults to `latest`) |
 | `kind` | string | ✓ | One of `KnowledgeBase`, `Agent`, `EmbeddingAgent` |
@@ -131,7 +131,7 @@ Publish a new artifact version or overwrite an existing tag.
 ```bash
 curl -X POST https://api.arachne-ai.com/v1/registry/push \
   -H "Authorization: Bearer $REGISTRY_JWT" \
-  -F "bundle=@my-kb.tgz" \
+  -F "bundle=@my-kb.orb" \
   -F "name=my-kb" \
   -F "tag=v1.0" \
   -F "kind=KnowledgeBase" \
@@ -176,14 +176,14 @@ Download a specific artifact bundle.
 **Response (200 OK):**
 
 - Content-Type: `application/octet-stream`
-- Body: Raw `.tgz` bundle data
+- Body: Raw `.orb` bundle data
 
 **Example:**
 
 ```bash
 curl -H "Authorization: Bearer $REGISTRY_JWT" \
   https://api.arachne-ai.com/v1/registry/pull/acme-corp/my-kb/v1.0 \
-  -o my-kb.tgz
+  -o my-kb.orb
 ```
 
 ### Delete Artifact
@@ -323,7 +323,7 @@ The Registry API is used internally by the `arachne` CLI. Developers use CLI com
 arachne weave knowledge-base.yaml
 
 # Push to registry
-arachne push my-kb.tgz \
+arachne push my-kb.orb \
   --name my-kb \
   --org acme-corp \
   --tag v1.0
@@ -343,7 +343,7 @@ Common error responses:
 
 | Status | Error | Meaning |
 |--------|-------|---------|
-| 400 | `Missing bundle file` | No `.tgz` file provided |
+| 400 | `Missing bundle file` | No `.orb` file provided |
 | 400 | `Missing name field` | Artifact name not specified |
 | 400 | `Missing kind field` | Kind (KnowledgeBase, Agent, etc.) not specified |
 | 400 | `sha256 mismatch` | Pre-computed SHA-256 doesn't match bundle data |

@@ -144,4 +144,38 @@ describe('Admin Dashboard smoke tests', () => {
     const selector = page.locator('#tenant-filter-analytics, select[aria-label*="tenant" i], .tenant-selector').first();
     expect(await selector.count()).toBeGreaterThan(0);
   });
+
+  // -------------------------------------------------------------------------
+  it('providers page renders', async () => {
+    await page.goto(`${BASE_URL}/dashboard/providers`);
+    await page.waitForLoadState('networkidle');
+
+    const content = await page.content();
+    if (content.includes('Admin session required')) {
+      await adminLogin(page);
+      await page.goto(`${BASE_URL}/dashboard/providers`);
+      await page.waitForLoadState('networkidle');
+    }
+
+    await screenshotIfDocsMode(page, 'admin-providers', 'Dashboard providers page', 'Providers');
+    const pageContent = await page.content();
+    expect(pageContent).toMatch(/Provider|Gateway/i);
+  });
+
+  // -------------------------------------------------------------------------
+  it('settings page renders with embedder config', async () => {
+    await page.goto(`${BASE_URL}/dashboard/settings`);
+    await page.waitForLoadState('networkidle');
+
+    const content = await page.content();
+    if (content.includes('Admin session required')) {
+      await adminLogin(page);
+      await page.goto(`${BASE_URL}/dashboard/settings`);
+      await page.waitForLoadState('networkidle');
+    }
+
+    await screenshotIfDocsMode(page, 'admin-settings', 'Dashboard settings with embedder config', 'Settings');
+    const pageContent = await page.content();
+    expect(pageContent).toMatch(/Settings|Embedding|Signups/i);
+  });
 });

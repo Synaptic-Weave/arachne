@@ -29,8 +29,12 @@ export interface ArachneChatProps {
   memory?: boolean;
   /** Conversation ID to resume */
   conversationId?: string;
-  /** Partition ID for multi-tenant conversations */
+  /** Partition ID for multi-tenant conversations. If omitted with memory enabled, an ephemeral partition is created and stored in localStorage. */
   partitionId?: string;
+  /** Show conversation history dropdown (default: true when memory is enabled) */
+  showConversations?: boolean;
+  /** localStorage key prefix for conversation history (default: 'arachne-chat') */
+  storageKey?: string;
   /** Show the model picker (default: true) */
   showModelPicker?: boolean;
   /** Show token usage stats (default: true) */

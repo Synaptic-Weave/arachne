@@ -79,8 +79,8 @@ export const weaveCommand = new Command('weave')
     const bundleBuf = Buffer.from(await res.arrayBuffer());
     const outDir = resolve(options.output);
     mkdirSync(outDir, { recursive: true });
-    const outPath = resolve(outDir, `${name}.bundle.tgz`);
+    const outPath = resolve(outDir, `${name}.orb`);
     writeFileSync(outPath, bundleBuf);
 
-    console.log(`✓ Wove ${kind} artifact → dist/${name}.bundle.tgz`);
+    console.log(`✓ Wove ${kind} artifact → dist/${name}.orb`);
   });

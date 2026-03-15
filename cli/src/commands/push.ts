@@ -5,7 +5,7 @@ import { getGatewayUrl, getToken } from '../config.js';
 
 export const pushCommand = new Command('push')
   .description('Push an artifact bundle to the registry')
-  .argument('<bundle>', 'Path to the .tgz bundle file')
+  .argument('<bundle>', 'Path to the .orb artifact file')
   .option('--tag <tag>', 'Tag for this artifact version', 'latest')
   .action(async (bundlePath: string, options: { tag: string }) => {
     let gatewayUrl: string;

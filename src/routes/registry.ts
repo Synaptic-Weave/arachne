@@ -108,7 +108,7 @@ export function registerRegistryRoutes(fastify: FastifyInstance, orm: MikroORM):
 
       return reply
         .header('Content-Type', 'application/octet-stream')
-        .header('Content-Disposition', `attachment; filename="${name}-${tag}.tgz"`)
+        .header('Content-Disposition', `attachment; filename="${name}-${tag}.orb"`)
         .send(buffer);
     },
   );

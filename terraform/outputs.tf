@@ -17,3 +17,8 @@ output "key_vault_uri" {
   description = "Azure Key Vault URI"
   value       = module.keyvault.key_vault_uri
 }
+
+output "static_web_app_hostname" {
+  description = "Default hostname of the Azure Static Web App (dev site)"
+  value       = module.static_site.static_web_app_default_hostname
+}

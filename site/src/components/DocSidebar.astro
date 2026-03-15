@@ -1,0 +1,37 @@
+---
+import { getCollection } from 'astro:content';
+
+interface Props {
+  section: 'docs' | 'developers';
+}
+
+const { section } = Astro.props;
+const entries = await getCollection(section);
+const sorted = entries.sort((a, b) => (a.data.order ?? 99) - (b.data.order ?? 99));
+const currentPath = Astro.url.pathname;
+---
+
+<aside class="hidden lg:block w-56 shrink-0">
+  <nav class="sticky top-8 space-y-1">
+    <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-3">
+      {section === 'docs' ? 'User Guides' : 'Developer Docs'}
+    </h3>
+    {sorted.map(entry => {
+      const href = `/${section}/${entry.slug}`;
+      const active = currentPath === href || currentPath === href + '/';
+      return (
+        <a
+          href={href}
+          class:list={[
+            'block text-sm px-3 py-1.5 rounded-md transition-colors',
+            active
+              ? 'bg-gray-800 text-white font-medium'
+              : 'text-gray-400 hover:text-gray-200 hover:bg-gray-900',
+          ]}
+        >
+          {entry.data.title}
+        </a>
+      );
+    })}
+  </nav>
+</aside>

@@ -1,0 +1,23 @@
+---
+import BaseLayout from './BaseLayout.astro';
+import DocSidebar from '../components/DocSidebar.astro';
+
+interface Props {
+  title: string;
+  description?: string;
+  section: 'docs' | 'developers';
+}
+
+const { title, description, section } = Astro.props;
+---
+
+<BaseLayout title={`${title} — Arachne`} description={description}>
+  <div class="max-w-7xl mx-auto px-4 sm:px-8 py-12 flex gap-12">
+    <DocSidebar section={section} />
+    <article class="flex-1 min-w-0 prose-dark">
+      <h1 class="text-3xl font-bold text-white mb-2">{title}</h1>
+      {description && <p class="text-gray-400 text-lg mb-8">{description}</p>}
+      <slot />
+    </article>
+  </div>
+</BaseLayout>

@@ -1,0 +1,66 @@
+---
+const apiUrl = import.meta.env.PUBLIC_API_URL ?? 'https://api.arachne-ai.com';
+---
+
+<section id="beta-signup" class="max-w-xl mx-auto px-8 py-20 text-center">
+  <h2 class="text-2xl font-bold text-white mb-2">Join the Beta</h2>
+  <p class="text-gray-400 mb-8">
+    Get early access to Arachne. We'll send you an invite when your account is ready.
+  </p>
+
+  <form id="beta-form" class="space-y-3" data-api-url={apiUrl}>
+    <input
+      type="text"
+      name="name"
+      placeholder="Name (optional)"
+      class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-gray-100 placeholder-gray-500 focus:outline-none focus:border-indigo-500"
+    />
+    <input
+      type="email"
+      name="email"
+      required
+      placeholder="you@company.com"
+      class="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-gray-100 placeholder-gray-500 focus:outline-none focus:border-indigo-500"
+    />
+    <button
+      type="submit"
+      class="w-full px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium transition-colors"
+    >
+      Request Access
+    </button>
+    <p id="beta-message" class="text-sm hidden"></p>
+  </form>
+</section>
+
+<script>
+  const form = document.getElementById('beta-form') as HTMLFormElement;
+  const message = document.getElementById('beta-message') as HTMLParagraphElement;
+  const apiUrl = form.dataset.apiUrl;
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = new FormData(form);
+    const email = data.get('email') as string;
+    const name = data.get('name') as string;
+
+    try {
+      const res = await fetch(`${apiUrl}/v1/beta/signup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, name: name || undefined }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Request failed (${res.status})`);
+      }
+
+      message.textContent = "You're on the list! We'll be in touch.";
+      message.className = 'text-sm text-green-400';
+      form.querySelectorAll('input, button').forEach(el => (el as HTMLInputElement).disabled = true);
+    } catch (err) {
+      message.textContent = (err as Error).message;
+      message.className = 'text-sm text-red-400';
+    }
+  });
+</script>

@@ -419,7 +419,7 @@ export class WeaveService {
   }
 
   /**
-   * Package chunks + metadata into a .tgz bundle.
+   * Package chunks + metadata into an .orb artifact (gzipped tar).
    * Signs with HMAC-SHA256 using BUNDLE_SIGNING_SECRET env var.
    */
   async packageBundle(
@@ -568,7 +568,7 @@ export class WeaveService {
 
     // Write bundle to outputDir
     await mkdir(outputDir, { recursive: true });
-    const bundleFilename = `${kbSpec.metadata.name}.tgz`;
+    const bundleFilename = `${kbSpec.metadata.name}.orb`;
     const bundlePath = join(outputDir, bundleFilename);
     await writeFile(bundlePath, bundle);
 
@@ -622,7 +622,7 @@ export class WeaveService {
     }
 
     await mkdir(outputDir, { recursive: true });
-    const bundleFilename = `${spec.metadata.name}.tgz`;
+    const bundleFilename = `${spec.metadata.name}.orb`;
     const bundlePath = join(outputDir, bundleFilename);
     await writeFile(bundlePath, bundle);
 

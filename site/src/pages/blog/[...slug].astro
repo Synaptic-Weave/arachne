@@ -1,0 +1,37 @@
+---
+import { getCollection } from 'astro:content';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+export async function getStaticPaths() {
+  const entries = await getCollection('blog');
+  return entries.map(entry => ({
+    params: { slug: entry.slug },
+    props: { entry },
+  }));
+}
+
+const { entry } = Astro.props;
+const { Content } = await entry.render();
+---
+
+<BaseLayout title={`${entry.data.title} — Arachne Blog`} description={entry.data.description}>
+  <article class="max-w-3xl mx-auto px-4 sm:px-8 py-16">
+    <div class="mb-8">
+      <div class="flex items-center gap-3 text-sm text-gray-500 mb-3">
+        <time datetime={entry.data.date.toISOString()}>
+          {entry.data.date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+        </time>
+        <span>&middot;</span>
+        <span>{entry.data.author}</span>
+      </div>
+      <h1 class="text-4xl font-bold text-white mb-3">{entry.data.title}</h1>
+      <p class="text-lg text-gray-400">{entry.data.description}</p>
+    </div>
+    <div class="prose-dark">
+      <Content />
+    </div>
+    <div class="mt-12 pt-8 border-t border-gray-800">
+      <a href="/blog" class="text-sm text-indigo-400 hover:text-indigo-300">&larr; Back to blog</a>
+    </div>
+  </article>
+</BaseLayout>

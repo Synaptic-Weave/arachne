@@ -113,6 +113,24 @@ module "container_apps" {
   admin_password_secret_id   = module.keyvault.db_admin_password_secret_id
 }
 
+module "static_site" {
+  source = "./modules/static_site"
+
+  resource_group_name     = azurerm_resource_group.main.name
+  location                = azurerm_resource_group.main.location
+  environment             = var.environment
+  app_name                = var.app_name
+  dns_zone_name_com       = var.dns_zone_name_com
+  dns_zone_name_dev       = var.dns_zone_name_dev
+  dns_resource_group_name = var.dns_resource_group_name
+  key_vault_id            = module.keyvault.key_vault_id
+  gateway_fqdn            = trimprefix(module.container_apps.gateway_url, "https://")
+  portal_fqdn             = trimprefix(module.container_apps.portal_url, "https://")
+  dev_gateway_fqdn        = var.dev_gateway_fqdn
+  dev_portal_fqdn         = var.dev_portal_fqdn
+  depends_on              = [module.keyvault, module.container_apps]
+}
+
 module "cicd" {
   source = "./modules/cicd"
 

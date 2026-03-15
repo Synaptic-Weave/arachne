@@ -189,6 +189,7 @@ describe('Portal app smoke tests', () => {
 
     // Creation panel should appear with name input and drop zone
     await waitForVisible(page, 'input[placeholder="my-knowledge-base"]', 5000);
+    await screenshotIfDocsMode(page, 'portal-kb-create', 'Knowledge base creation panel', 'Knowledge Bases');
     const content = await page.content();
     expect(content).toMatch(/Create Knowledge Base/i);
     expect(content).toMatch(/Drag.*drop|click to browse/i);

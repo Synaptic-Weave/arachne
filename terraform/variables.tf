@@ -73,3 +73,33 @@ variable "db_storage_mb" {
   type        = number
   default     = 32768
 }
+
+variable "dns_zone_name_com" {
+  description = "DNS zone for the production site"
+  type        = string
+  default     = "arachne-ai.com"
+}
+
+variable "dns_zone_name_dev" {
+  description = "DNS zone for the dev preview site"
+  type        = string
+  default     = "arachne-ai.dev"
+}
+
+variable "dns_resource_group_name" {
+  description = "Resource group containing the Azure DNS zones"
+  type        = string
+  default     = "rg-arachne-dns"
+}
+
+variable "dev_gateway_fqdn" {
+  description = "FQDN of the dev gateway Container App (for DNS CNAME)"
+  type        = string
+  default     = ""
+}
+
+variable "dev_portal_fqdn" {
+  description = "FQDN of the dev portal Container App (for DNS CNAME)"
+  type        = string
+  default     = ""
+}

@@ -111,6 +111,21 @@ describe('Portal agents smoke tests', () => {
   });
 
   // -------------------------------------------------------------------------
+  it('agent editor opens with provider dropdown', async () => {
+    await page.goto(`${BASE_URL}/app/agents`);
+    await ensureAuth();
+    await page.waitForTimeout(2000);
+
+    // Click Edit on the first agent
+    const editBtn = page.locator('button:has-text("Edit")').first();
+    if (await editBtn.count() > 0) {
+      await editBtn.click();
+      await page.waitForTimeout(1000);
+      await screenshotIfDocsMode(page, 'portal-agent-editor', 'Agent editor with provider dropdown', 'Agents');
+    }
+  });
+
+  // -------------------------------------------------------------------------
   it('owner can navigate to Subtenants page', async () => {
     await page.goto(`${BASE_URL}/app/subtenants`);
     await ensureAuth();

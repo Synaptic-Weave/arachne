@@ -1,0 +1,39 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout title="Privacy Policy — Arachne" description="Arachne privacy policy.">
+  <div class="max-w-3xl mx-auto px-4 sm:px-8 py-16 prose-dark">
+    <h1>Privacy Policy</h1>
+    <p><em>Last updated: March 2026</em></p>
+
+    <h2>What we collect</h2>
+    <p>
+      When you use Arachne, we collect the minimum data necessary to provide the service:
+    </p>
+    <ul>
+      <li>Account information (email address)</li>
+      <li>API request metadata (model, token counts, latency) for observability</li>
+      <li>Request and response bodies are encrypted at rest with per-tenant keys</li>
+    </ul>
+
+    <h2>What we don't do</h2>
+    <ul>
+      <li>We do not train models on your data</li>
+      <li>We do not sell your data to third parties</li>
+      <li>We do not access your encrypted request/response bodies without your authorization</li>
+    </ul>
+
+    <h2>Data retention</h2>
+    <p>
+      Trace data is retained for the duration of your account. You can delete your account
+      and all associated data at any time.
+    </p>
+
+    <h2>Contact</h2>
+    <p>
+      Questions about privacy? Reach out at
+      <a href="mailto:privacy@synapticweave.com">privacy@synapticweave.com</a>.
+    </p>
+  </div>
+</BaseLayout>

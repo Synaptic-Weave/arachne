@@ -79,7 +79,7 @@ spec:
 ```
 
 ### Bundle
-A bundle is the output of `arachne weave` — a `.tgz` file containing:
+A bundle is the output of `arachne weave` — a `.orb` file containing:
 - `manifest.json` — artifact metadata, SHA-256, VectorSpace contract, signature
 - `chunks/` — document chunks with their embedding vectors
 
@@ -96,10 +96,10 @@ Developer writes YAML specs
 arachne weave kb.yaml           ← AI Runtime chunks docs, generates embeddings, signs bundle
          │
          ▼
-dist/support-kb.bundle.tgz   ← Immutable, content-addressed artifact
+dist/support-kb.orb   ← Immutable, content-addressed artifact
          │
          ▼
-arachne push dist/support-kb.bundle.tgz --tag 0.1.0
+arachne push dist/support-kb.orb --tag 0.1.0
          │
          ▼
 Registry stores bundle        ← org/name:0.1.0 now resolvable
@@ -159,11 +159,11 @@ _What changes:_ `kind` field on agents model. EmbeddingAgent YAML schema. WeaveS
 4. Chunks documents (650 tokens, 120 overlap by default)
 5. Calls the EmbeddingAgent's provider to generate embeddings
 6. Computes the VectorSpace hash (SHA-256 of EmbeddingAgent config)
-7. Packages everything into a `.tgz`
+7. Packages everything into a `.orb`
 8. Signs it with HMAC-SHA256 (`BUNDLE_SIGNING_SECRET` env var)
 9. Returns the bundle to the CLI
 
-The CLI saves the bundle to `dist/<name>.bundle.tgz`.
+The CLI saves the bundle to `dist/<name>.orb`.
 
 _What changes:_ DB migration (pgvector extension + `vector_spaces`, `kb_chunks` tables). WeaveService. `POST /v1/registry/weave` runtime route. `arachne weave` CLI command.
 
@@ -172,7 +172,7 @@ _What changes:_ DB migration (pgvector extension + `vector_spaces`, `kb_chunks` 
 ### Story 4 — arachne push (#58)
 **As a developer, I want to push a bundle to the AI Runtime registry.**
 
-`arachne push <bundle.tgz> --tag 0.1.0` stores the bundle in the database and registers the tag. Artifacts are immutable: pushing the same SHA-256 again is a no-op. The registry supports:
+`arachne push <bundle.orb> --tag 0.1.0` stores the bundle in the database and registers the tag. Artifacts are immutable: pushing the same SHA-256 again is a no-op. The registry supports:
 - `push` — store artifact + chunks + tag
 - `pull` — download bundle by ref
 - `resolve` — look up `org/name:tag` → artifact metadata

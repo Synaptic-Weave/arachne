@@ -1,0 +1,94 @@
+---
+import CodeBlock from './CodeBlock.astro';
+---
+
+<section class="max-w-5xl mx-auto px-8 py-20">
+  <!-- Steps -->
+  <div class="space-y-16 mb-24">
+    <div class="grid md:grid-cols-2 gap-8 items-center">
+      <div>
+        <span class="text-indigo-400 text-sm font-semibold">Step 1</span>
+        <h3 class="text-2xl font-bold text-white mt-1 mb-3">Define your agent</h3>
+        <p class="text-gray-400">
+          Write a YAML spec with your system prompt, skills, knowledge base reference,
+          and merge policies. It's your agent's portable definition.
+        </p>
+      </div>
+      <CodeBlock title="agent.yaml">{`apiVersion: arachne.ai/v0
+kind: Agent
+metadata:
+  name: support-agent
+spec:
+  model: gpt-4o
+  systemPrompt: |
+    You are a helpful support agent.
+    Answer using the knowledge base.
+  knowledgeBaseRef: product-docs`}</CodeBlock>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-8 items-center">
+      <div>
+        <span class="text-indigo-400 text-sm font-semibold">Step 2</span>
+        <h3 class="text-2xl font-bold text-white mt-1 mb-3">Build and push</h3>
+        <p class="text-gray-400">
+          Weave your agent into a deployable artifact with embedded knowledge base.
+          Push to any Arachne registry.
+        </p>
+      </div>
+      <CodeBlock title="Terminal">{`$ arachne weave agent.yaml
+  Weaving support-agent...
+  Chunking 42 documents (650 tokens, 120 overlap)
+  Embedding 186 chunks via text-embedding-3-small
+  Packaged support-agent.orb (2.4 MB)
+
+$ arachne push support-agent.orb
+  Pushed myorg/support-agent:latest`}</CodeBlock>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-8 items-center">
+      <div>
+        <span class="text-indigo-400 text-sm font-semibold">Step 3</span>
+        <h3 class="text-2xl font-bold text-white mt-1 mb-3">Deploy and observe</h3>
+        <p class="text-gray-400">
+          Deploy to any environment. Every request is traced with latency, token usage,
+          and RAG retrieval metrics. Zero additional code required.
+        </p>
+      </div>
+      <CodeBlock title="Terminal">{`$ arachne deploy myorg/support-agent:latest --env production
+  Deployed to production
+
+$ curl https://api.arachne-ai.com/v1/chat/completions \\
+    -H "Authorization: Bearer loom_sk_..." \\
+    -d '{"model":"gpt-4o","messages":[...]}'`}</CodeBlock>
+    </div>
+  </div>
+
+  <!-- Why section -->
+  <div class="bg-gray-900 border border-gray-800 rounded-xl p-8 md:p-12">
+    <h2 class="text-2xl font-bold text-white mb-6">Why Arachne?</h2>
+    <div class="grid md:grid-cols-2 gap-8">
+      <div>
+        <h3 class="text-sm font-semibold text-red-400 uppercase tracking-wide mb-3">Without Arachne</h3>
+        <ul class="space-y-2 text-sm text-gray-400">
+          <li class="flex gap-2"><span class="text-red-500">&#x2717;</span> Glue code for every LLM provider</li>
+          <li class="flex gap-2"><span class="text-red-500">&#x2717;</span> Separate vector DB setup and management</li>
+          <li class="flex gap-2"><span class="text-red-500">&#x2717;</span> Custom observability pipeline</li>
+          <li class="flex gap-2"><span class="text-red-500">&#x2717;</span> Conversation state managed in app code</li>
+          <li class="flex gap-2"><span class="text-red-500">&#x2717;</span> Agent configs scattered across services</li>
+          <li class="flex gap-2"><span class="text-red-500">&#x2717;</span> No standard way to package or deploy</li>
+        </ul>
+      </div>
+      <div>
+        <h3 class="text-sm font-semibold text-green-400 uppercase tracking-wide mb-3">With Arachne</h3>
+        <ul class="space-y-2 text-sm text-gray-400">
+          <li class="flex gap-2"><span class="text-green-400">&#x2713;</span> One API for OpenAI, Azure, Ollama</li>
+          <li class="flex gap-2"><span class="text-green-400">&#x2713;</span> Embedded vector search with pgvector</li>
+          <li class="flex gap-2"><span class="text-green-400">&#x2713;</span> Tracing built into the gateway</li>
+          <li class="flex gap-2"><span class="text-green-400">&#x2713;</span> Conversation memory as a runtime feature</li>
+          <li class="flex gap-2"><span class="text-green-400">&#x2713;</span> Portable YAML agent specs</li>
+          <li class="flex gap-2"><span class="text-green-400">&#x2713;</span> <code class="text-xs bg-gray-800 px-1 rounded">arachne weave → push → deploy</code></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>

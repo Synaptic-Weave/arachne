@@ -1,0 +1,47 @@
+---
+const year = new Date().getFullYear();
+---
+
+<footer class="border-t border-gray-800 py-10 mt-20">
+  <div class="max-w-7xl mx-auto px-4 sm:px-8">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-8 mb-10">
+      <div>
+        <h4 class="text-sm font-semibold text-gray-200 mb-3">Product</h4>
+        <ul class="space-y-2 text-sm text-gray-400">
+          <li><a href="/docs/getting-started" class="hover:text-gray-200">Getting Started</a></li>
+          <li><a href="/docs/portal-guide" class="hover:text-gray-200">Portal Guide</a></li>
+          <li><a href="/docs/cli-quickstart" class="hover:text-gray-200">CLI</a></li>
+          <li><a href="/docs/chat-widget" class="hover:text-gray-200">Chat Widget</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4 class="text-sm font-semibold text-gray-200 mb-3">Developers</h4>
+        <ul class="space-y-2 text-sm text-gray-400">
+          <li><a href="/developers/api-reference" class="hover:text-gray-200">API Reference</a></li>
+          <li><a href="/developers/architecture" class="hover:text-gray-200">Architecture</a></li>
+          <li><a href="/developers/rag-inference" class="hover:text-gray-200">RAG Inference</a></li>
+          <li><a href="/developers/contributing" class="hover:text-gray-200">Contributing</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4 class="text-sm font-semibold text-gray-200 mb-3">Community</h4>
+        <ul class="space-y-2 text-sm text-gray-400">
+          <li><a href="https://github.com/Synaptic-Weave/arachne" class="hover:text-gray-200">GitHub</a></li>
+          <li><a href="/blog" class="hover:text-gray-200">Blog</a></li>
+          <li><a href="/changelog" class="hover:text-gray-200">Changelog</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4 class="text-sm font-semibold text-gray-200 mb-3">Company</h4>
+        <ul class="space-y-2 text-sm text-gray-400">
+          <li><a href="/about" class="hover:text-gray-200">About</a></li>
+          <li><a href="/privacy" class="hover:text-gray-200">Privacy</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="border-t border-gray-800 pt-6 flex items-center justify-between text-xs text-gray-500">
+      <span>&copy; {year} Synaptic Weave, Inc.</span>
+      <span>Built with Arachne</span>
+    </div>
+  </div>
+</footer>

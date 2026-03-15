@@ -1,0 +1,23 @@
+{
+  "name": "@arachne/site",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "predev": "rm -rf public/screenshots && cp -r ../docs/screenshots public/screenshots 2>/dev/null || true",
+    "dev": "astro dev",
+    "prebuild": "rm -rf public/screenshots && cp -r ../docs/screenshots public/screenshots 2>/dev/null || true",
+    "build": "astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "astro": "^5.10.0",
+    "@astrojs/tailwind": "^6.0.2",
+    "@astrojs/react": "^4.2.1",
+    "@astrojs/mdx": "^4.2.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwindcss": "^3.4.0",
+    "@arachne/chat": "*"
+  }
+}

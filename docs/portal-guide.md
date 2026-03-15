@@ -78,7 +78,7 @@ EOF
 arachne weave my-kb.yaml
 
 # 3. Push to registry
-arachne push my-kb.tgz \
+arachne push my-kb.orb \
   --name my-kb \
   --org my-org \
   --tag v1.0
@@ -339,7 +339,7 @@ Both the name and slug are updated immediately. All future artifact publishes wi
 You specify the org slug when publishing artifacts:
 
 ```bash
-arachne push my-kb.tgz \
+arachne push my-kb.orb \
   --name product-docs \
   --org acme-corp \      # This is your org slug
   --tag v1.0

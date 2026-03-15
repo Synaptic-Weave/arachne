@@ -1,8 +1,54 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import Markdown from 'react-markdown';
 import type { ArachneChatProps, ChatMessage, RagSource } from './types.js';
 import { sendChatCompletion } from './client.js';
 import ModelPicker from './ModelPicker.js';
+
+// ── localStorage helpers ────────────────────────────────────────────────────
+
+interface StoredConversation {
+  id: string;
+  preview: string;
+  createdAt: string;
+}
+
+function getStoragePrefix(storageKey: string) {
+  return `${storageKey}:`;
+}
+
+function getPartitionId(storageKey: string): string {
+  const key = `${storageKey}:partition`;
+  let id = localStorage.getItem(key);
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem(key, id);
+  }
+  return id;
+}
+
+function loadConversations(storageKey: string): StoredConversation[] {
+  const key = `${getStoragePrefix(storageKey)}conversations`;
+  try {
+    return JSON.parse(localStorage.getItem(key) ?? '[]');
+  } catch {
+    return [];
+  }
+}
+
+function saveConversations(storageKey: string, convos: StoredConversation[]) {
+  const key = `${getStoragePrefix(storageKey)}conversations`;
+  localStorage.setItem(key, JSON.stringify(convos));
+}
+
+function addConversation(storageKey: string, id: string, preview: string) {
+  const convos = loadConversations(storageKey);
+  if (convos.some(c => c.id === id)) return;
+  convos.unshift({ id, preview, createdAt: new Date().toISOString() });
+  // Keep last 50
+  saveConversations(storageKey, convos.slice(0, 50));
+}
+
+// ── Component ───────────────────────────────────────────────────────────────
 
 export function ArachneChat({
   apiKey,
@@ -12,10 +58,12 @@ export function ArachneChat({
   title = 'Chat',
   memory = false,
   conversationId: initialConversationId,
-  partitionId,
+  partitionId: explicitPartitionId,
   showModelPicker = true,
   showUsage = true,
   showSources = true,
+  showConversations,
+  storageKey = 'arachne-chat',
   placeholder = 'Type a message…',
   className,
   onMessage,
@@ -29,7 +77,19 @@ export function ArachneChat({
   const [conversationId, setConversationId] = useState<string | null>(
     initialConversationId ?? null,
   );
+  const [conversations, setConversations] = useState<StoredConversation[]>([]);
+  const [showConvoList, setShowConvoList] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const shouldShowConvos = showConversations ?? memory;
+  const partitionId = explicitPartitionId ?? (memory ? getPartitionId(storageKey) : undefined);
+
+  // Load conversation history from localStorage
+  useEffect(() => {
+    if (memory) {
+      setConversations(loadConversations(storageKey));
+    }
+  }, [memory, storageKey]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -77,8 +137,13 @@ export function ArachneChat({
       setMessages(prev => [...prev, assistantMessage]);
       onMessage?.(assistantMessage);
 
-      if (memory && res.conversation_id && !conversationId) {
-        setConversationId(res.conversation_id);
+      // Track new conversation
+      if (memory && res.conversation_id) {
+        if (!conversationId) {
+          setConversationId(res.conversation_id);
+        }
+        addConversation(storageKey, res.conversation_id, content);
+        setConversations(loadConversations(storageKey));
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Request failed';
@@ -96,9 +161,16 @@ export function ArachneChat({
     }
   }
 
-  function handleClear() {
+  function handleNewConversation() {
     setMessages([]);
-    setConversationId(initialConversationId ?? null);
+    setConversationId(null);
+    setShowConvoList(false);
+  }
+
+  function handleSelectConversation(id: string) {
+    setMessages([]);
+    setConversationId(id);
+    setShowConvoList(false);
   }
 
   return (
@@ -108,6 +180,46 @@ export function ArachneChat({
         <div className="arachne-chat-header-row">
           <span className="arachne-chat-title">{title}</span>
           <div className="arachne-chat-controls">
+            {shouldShowConvos && (
+              <div className="arachne-chat-convo-picker">
+                <button
+                  onClick={() => setShowConvoList(v => !v)}
+                  className="arachne-chat-convo-btn"
+                  disabled={loading}
+                  title="Conversations"
+                >
+                  {conversationId
+                    ? conversationId.substring(0, 6) + '…'
+                    : 'New chat'}
+                </button>
+                {showConvoList && (
+                  <div className="arachne-chat-convo-dropdown">
+                    <button
+                      onClick={handleNewConversation}
+                      className="arachne-chat-convo-option new"
+                    >
+                      + New conversation
+                    </button>
+                    {conversations.length === 0 ? (
+                      <div className="arachne-chat-convo-empty">No history yet</div>
+                    ) : (
+                      conversations.map(c => (
+                        <button
+                          key={c.id}
+                          onClick={() => handleSelectConversation(c.id)}
+                          className={`arachne-chat-convo-option ${c.id === conversationId ? 'active' : ''}`}
+                        >
+                          <span className="arachne-chat-convo-preview">{c.preview}</span>
+                          <span className="arachne-chat-convo-date">
+                            {new Date(c.createdAt).toLocaleDateString()}
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
             {showModelPicker && (
               <ModelPicker
                 value={model}
@@ -116,23 +228,8 @@ export function ArachneChat({
                 disabled={loading}
               />
             )}
-            {messages.length > 0 && (
-              <button
-                onClick={handleClear}
-                disabled={loading}
-                className="arachne-chat-clear-btn"
-                title="Clear conversation"
-              >
-                Clear
-              </button>
-            )}
           </div>
         </div>
-        {memory && conversationId && (
-          <div className="arachne-chat-conversation-id">
-            {conversationId.substring(0, 8)}…
-          </div>
-        )}
       </div>
 
       {/* Messages */}

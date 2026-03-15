@@ -73,22 +73,22 @@ arachne weave support-kb.yaml
 # Uploading spec and docs to gateway...
 # Chunking 47 documents (3,821 chunks)...
 # Generating embeddings...
-# ✓ Bundle saved to dist/support-kb.bundle.tgz
+# ✓ Bundle saved to dist/support-kb.orb
 #   sha256: a3f8c2d1...
 #   VectorSpace: vs_openai_text-embedding-3-small_1536
 
 arachne weave support-agent.yaml
-# ✓ Bundle saved to dist/support-agent.bundle.tgz
+# ✓ Bundle saved to dist/support-agent.orb
 #   sha256: b7e4a9f2...
 ```
 
 ### Step 5: Push bundles to the registry
 
 ```bash
-arachne push dist/support-kb.bundle.tgz --tag 0.1.0
+arachne push dist/support-kb.orb --tag 0.1.0
 # ✓ acme/support-kb:0.1.0
 
-arachne push dist/support-agent.bundle.tgz --tag 0.1.0
+arachne push dist/support-agent.orb --tag 0.1.0
 # ✓ acme/support-agent:0.1.0
 ```
 
@@ -163,13 +163,13 @@ arachne weave ./specs/support-kb.yaml --out ./artifacts/
    - **.zip file** → extracted in-memory; all contained files processed
 3. Uploads spec + docs to `POST /v1/registry/weave`
 4. AI Runtime chunks docs, embeds, packages, signs
-5. Returns bundle → saved to `dist/<name>.bundle.tgz`
+5. Returns bundle → saved to `dist/<name>.orb`
 
 **Output:**
 ```
 dist/
-  support-kb.bundle.tgz
-  support-agent.bundle.tgz
+  support-kb.orb
+  support-agent.orb
 ```
 
 ---
@@ -179,9 +179,9 @@ dist/
 Push a bundle file to the AI Runtime registry and tag it.
 
 ```bash
-arachne push dist/support-kb.bundle.tgz --tag 0.1.0
-arachne push dist/support-agent.bundle.tgz --tag 0.1.0
-arachne push dist/support-agent.bundle.tgz              # defaults to tag: latest
+arachne push dist/support-kb.orb --tag 0.1.0
+arachne push dist/support-agent.orb --tag 0.1.0
+arachne push dist/support-agent.orb              # defaults to tag: latest
 ```
 
 **Options:**
@@ -280,8 +280,8 @@ spec:
 Create and manage EmbeddingAgents in the portal alongside regular Agents, or weave them via the CLI:
 
 ```bash
-arachne weave my-embedder.yaml         # → dist/my-embedder.bundle.tgz
-arachne push dist/my-embedder.bundle.tgz --tag 1.0.0
+arachne weave my-embedder.yaml         # → dist/my-embedder.orb
+arachne push dist/my-embedder.orb --tag 1.0.0
 arachne deploy acme/my-embedder:1.0.0 --tenant acme --env prod
 ```
 
@@ -339,7 +339,7 @@ You don't need the CLI to use the artifact system. The Arachne portal provides e
 | CLI Command | Portal Equivalent |
 |-------------|-------------------|
 | `arachne weave <kb.yaml>` | Knowledge Bases → Upload (file/zip) |
-| `arachne push <bundle.tgz>` | Knowledge Bases → Upload (auto-pushed after weave) |
+| `arachne push <bundle.orb>` | Knowledge Bases → Upload (auto-pushed after weave) |
 | `arachne deploy <artifact:tag>` | Deployments → Provision |
 | _(portal only)_ | Agents → Export as YAML |
 

@@ -74,6 +74,7 @@
   "main": "index.js",
   "workspaces": [
     "cli",
-    "packages/chat"
+    "packages/chat",
+    "site"
   ]
 }

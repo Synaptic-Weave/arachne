@@ -136,7 +136,7 @@ arachne weave my-kb.yaml
 2. Resolves docs (directory, .zip file, or single file)
 3. Chunks text based on `spec.chunking.tokenSize` and overlap
 4. Calls OpenAI embedding API (in batches of 100) using `SYSTEM_EMBEDDER_MODEL`
-5. Packages chunks + embeddings into a `.tgz` bundle
+5. Packages chunks + embeddings into a `.orb` bundle
 6. Signs with HMAC-SHA256
 
 The bundle records the embedder provider, model, and dimensions in `manifest.json`. This information is used at inference time to verify compatibility.
@@ -172,7 +172,7 @@ If you switch from one embedding model to another, **existing and new KBs will h
 SYSTEM_EMBEDDER_MODEL=text-embedding-3-large arachne weave my-kb.yaml
 
 # 2. Push with a new tag
-arachne push my-kb.tgz --name my-kb --tag v2-large
+arachne push my-kb.orb --name my-kb --tag v2-large
 
 # 3. Deploy the new version
 arachne deploy my-org/my-kb:v2-large
