@@ -3,6 +3,7 @@ import type { EntityManager } from '@mikro-orm/core';
 import { ApiKey } from '../../domain/entities/ApiKey.js';
 import { Tenant } from '../../domain/entities/Tenant.js';
 import { Agent } from '../../domain/entities/Agent.js';
+import { ProviderBase } from '../../domain/entities/ProviderBase.js';
 import type {
   TenantContext,
   TenantProviderConfig,
@@ -94,6 +95,16 @@ export class TenantService {
 
     const resolvedProviderConfig =
       chain.find((c) => c.providerConfig != null)?.providerConfig ?? undefined;
+
+    // If the resolved provider config references a gateway provider entity, load it
+    let providerEntity: ProviderBase | undefined;
+    if (resolvedProviderConfig?.gatewayProviderId) {
+      const found = await this.em.findOne(ProviderBase, resolvedProviderConfig.gatewayProviderId);
+      if (found) {
+        providerEntity = found;
+      }
+    }
+
     const resolvedSystemPrompt =
       chain.find((c) => c.systemPrompt != null)?.systemPrompt ?? undefined;
 
@@ -125,6 +136,7 @@ export class TenantService {
         agentId: agent?.id ?? undefined,
         knowledgeBaseRef: agent?.knowledgeBaseRef ?? undefined,
         providerConfig: resolvedProviderConfig,
+        providerEntity,
         agentSystemPrompt: agent?.systemPrompt ?? undefined,
         agentSkills: agent?.skills ?? undefined,
         agentMcpEndpoints: agent?.mcpEndpoints ?? undefined,

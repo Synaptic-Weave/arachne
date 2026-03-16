@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Tenant } from './Tenant.js';
+import type { BaseProvider } from '../../providers/base.js';
+import { decryptTraceBody } from '../../encryption.js';
 
 export abstract class ProviderBase {
   id!: string;
@@ -55,9 +57,29 @@ export abstract class ProviderBase {
   }
 
   /**
+   * Decrypt the stored API key if it uses the `encrypted:{ciphertext}:{iv}` format.
+   * @param tenantId - Used for per-tenant key derivation. If omitted, decryption of
+   *   encrypted keys will fail gracefully and return an empty string.
+   */
+  protected decryptApiKey(tenantId?: string): string {
+    if (!this.apiKey) return '';
+    if (!this.apiKey.startsWith('encrypted:')) return this.apiKey;
+
+    try {
+      const parts = this.apiKey.split(':');
+      if (parts.length === 3 && tenantId) {
+        return decryptTraceBody(tenantId, parts[1], parts[2]);
+      }
+    } catch (err) {
+      console.error('Failed to decrypt provider API key', err);
+    }
+    return '';
+  }
+
+  /**
    * Abstract methods - implemented by concrete providers
    */
   abstract validate(): void;
-  abstract createClient(): any; // Will be typed as LLMClient when available
+  abstract createClient(tenantId?: string): BaseProvider;
   abstract sanitizeForTenant(): Partial<ProviderBase>;
 }

@@ -1,4 +1,6 @@
 import { ProviderBase } from './ProviderBase.js';
+import type { BaseProvider } from '../../providers/base.js';
+import { OpenAIProvider as OpenAIProxyAdapter } from '../../providers/openai.js';
 
 export class OllamaProvider extends ProviderBase {
   baseUrl!: string; // Required for Ollama
@@ -10,12 +12,11 @@ export class OllamaProvider extends ProviderBase {
     // Ollama typically doesn't require an API key, but we keep the field for consistency
   }
 
-  createClient(): any {
-    // TODO: Implement Ollama client creation
-    // return new OllamaClient({
-    //   baseURL: this.baseUrl,
-    // });
-    throw new Error('Ollama client creation not yet implemented');
+  createClient(_tenantId?: string): BaseProvider {
+    return new OpenAIProxyAdapter({
+      apiKey: 'ollama',
+      baseUrl: (this.baseUrl || 'http://localhost:11434') + '/v1',
+    });
   }
 
   sanitizeForTenant(): Partial<OllamaProvider> {
