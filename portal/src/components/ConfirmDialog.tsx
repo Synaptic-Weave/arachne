@@ -21,13 +21,20 @@ export default function ConfirmDialog({
   confirmVariant = 'danger',
   loading = false,
 }: ConfirmDialogProps) {
+  const cancelRef = useRef<HTMLButtonElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (open) {
-      confirmRef.current?.focus();
+      // Focus Cancel for danger dialogs (prevents accidental destructive action),
+      // focus Confirm for primary dialogs
+      if (confirmVariant === 'danger') {
+        cancelRef.current?.focus();
+      } else {
+        confirmRef.current?.focus();
+      }
     }
-  }, [open]);
+  }, [open, confirmVariant]);
 
   useEffect(() => {
     if (!open) return;
@@ -35,10 +42,14 @@ export default function ConfirmDialog({
       if (e.key === 'Escape') {
         onClose();
       }
-      // Focus trap: keep focus within the dialog
+      // Focus trap: cycle between Cancel and Confirm
       if (e.key === 'Tab') {
         e.preventDefault();
-        confirmRef.current?.focus();
+        if (document.activeElement === confirmRef.current) {
+          cancelRef.current?.focus();
+        } else {
+          confirmRef.current?.focus();
+        }
       }
     }
     document.addEventListener('keydown', handleKeyDown);
@@ -64,6 +75,7 @@ export default function ConfirmDialog({
         {description && <p className="text-sm text-gray-400">{description}</p>}
         <div className="flex justify-end gap-3 pt-2">
           <button
+            ref={cancelRef}
             type="button"
             onClick={onClose}
             disabled={loading}
