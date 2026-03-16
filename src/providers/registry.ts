@@ -68,6 +68,7 @@ export function getProviderForTenant(tenantCtx: TenantContext): BaseProvider {
       endpoint:    cfg.baseUrl ?? '',
       deployment:  cfg.deployment ?? '',
       apiVersion:  cfg.apiVersion ?? '2024-02-01',
+      deploymentMap: cfg.deploymentMap,
     });
   } else if (cfg?.provider === 'ollama') {
     provider = new OpenAIProvider({
@@ -126,6 +127,7 @@ function resolveGatewayProvider(gatewayProviderId: string, tenantCtx: TenantCont
         endpoint: (ref as any).baseUrl ?? '',
         deployment: (ref as any).deployment ?? '',
         apiVersion: (ref as any).apiVersion ?? '2024-02-01',
+        deploymentMap: (ref as any).deploymentMap,
       });
     } else if (gwType === 'OllamaProvider') {
       return new OpenAIProvider({
@@ -178,6 +180,7 @@ export async function getProviderForTenantAsync(tenantCtx: TenantContext): Promi
           endpoint: (gwProvider as any).baseUrl ?? '',
           deployment: (gwProvider as any).deployment ?? '',
           apiVersion: (gwProvider as any).apiVersion ?? '2024-02-01',
+          deploymentMap: (gwProvider as any).deploymentMap,
         });
       } else if (gwType === 'OllamaProvider') {
         provider = new OpenAIProvider({

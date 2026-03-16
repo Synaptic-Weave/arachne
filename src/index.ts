@@ -269,13 +269,21 @@ const start = async () => {
         const upstreamStartMs = Date.now();
         const response = await provider.proxy(proxyReq);
 
-        // Set response headers
+        // Forward upstream headers, but skip hop-by-hop and framing headers
+        // so Fastify can properly serialize JSON object responses.
+        const skipHeaders = new Set(['content-type', 'content-length', 'transfer-encoding', 'connection']);
         for (const [key, value] of Object.entries(response.headers)) {
-          reply.header(key, value);
+          if (!skipHeaders.has(key.toLowerCase())) {
+            reply.header(key, value);
+          }
         }
 
         // Handle streaming response — pipe through SSE proxy for trace capture
         if (response.stream) {
+          // For streaming, we need the original content-type (text/event-stream)
+          if (response.headers['content-type']) {
+            reply.header('content-type', response.headers['content-type']);
+          }
           const sseProxy = createSSEProxy({
             onComplete: () => {},
             traceContext: tenant
@@ -296,6 +304,38 @@ const start = async () => {
         }
 
         // Handle regular JSON response
+
+        // Detect upstream provider errors and return a friendly 200 with error details
+        if (response.status >= 400) {
+          const upstreamError = (response.body as any)?.error;
+          const errorMessage = upstreamError?.message || `Provider returned HTTP ${response.status}`;
+          const errorCode = upstreamError?.code || upstreamError?.type || 'provider_error';
+          fastify.log.error(
+            { provider: provider.name, status: response.status, upstreamError },
+            `[provider] upstream error: ${errorMessage}`,
+          );
+          return reply.code(200).send({
+            id: `error-${Date.now()}`,
+            object: 'chat.completion',
+            created: Math.floor(Date.now() / 1000),
+            model: effectiveBody?.model ?? 'unknown',
+            choices: [{
+              index: 0,
+              message: {
+                role: 'assistant',
+                content: `I'm sorry, I wasn't able to process your request. The model provider returned an error: ${errorMessage}`,
+              },
+              finish_reason: 'stop',
+            }],
+            usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+            arachne_error: {
+              upstream_status: response.status,
+              code: errorCode,
+              message: errorMessage,
+            },
+          });
+        }
+
         if (tenant) {
           // MCP round-trip: if the response has tool_calls matching agent MCP endpoints,
           // call the MCP server and re-send to the provider (one round-trip only).
@@ -378,11 +418,26 @@ const start = async () => {
         return reply.code(response.status).send(response.body);
       } catch (err: any) {
         fastify.log.error(err);
-        return reply.code(500).send({
-          error: {
-            message: err.message || 'Internal server error',
-            type: 'server_error'
-          }
+        const errorMessage = err.message || 'Internal server error';
+        return reply.code(200).send({
+          id: `error-${Date.now()}`,
+          object: 'chat.completion',
+          created: Math.floor(Date.now() / 1000),
+          model: (effectiveBody as any)?.model ?? 'unknown',
+          choices: [{
+            index: 0,
+            message: {
+              role: 'assistant',
+              content: `I'm sorry, something went wrong processing your request. Please try again.`,
+            },
+            finish_reason: 'stop',
+          }],
+          usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+          arachne_error: {
+            upstream_status: 500,
+            code: 'gateway_error',
+            message: errorMessage,
+          },
         });
       }
     });

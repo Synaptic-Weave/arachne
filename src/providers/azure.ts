@@ -5,10 +5,12 @@ import { ProxyRequest, ProxyResponse, ProviderConfig } from '../types/openai.js'
 export interface AzureProviderConfig extends ProviderConfig {
   /** Azure OpenAI resource endpoint, e.g. https://my-resource.openai.azure.com */
   endpoint: string;
-  /** Deployment name as configured in Azure AI Studio */
+  /** Default deployment name as configured in Azure AI Studio */
   deployment: string;
   /** Azure OpenAI API version, e.g. 2024-02-01 */
   apiVersion: string;
+  /** Optional map of model name → Azure deployment name, e.g. { "gpt-4o": "gpt-4o", "gpt-4o-mini": "gpt4o-mini" } */
+  deploymentMap?: Record<string, string>;
 }
 
 /**
@@ -25,17 +27,25 @@ export class AzureProvider extends BaseProvider {
   private readonly endpoint: string;
   private readonly deployment: string;
   private readonly apiVersion: string;
+  private readonly deploymentMap: Record<string, string>;
 
   constructor(config: AzureProviderConfig) {
     super(config);
     this.endpoint = config.endpoint.replace(/\/$/, '');
     this.deployment = config.deployment;
     this.apiVersion = config.apiVersion;
+    this.deploymentMap = config.deploymentMap ?? {};
   }
 
   async proxy(proxyReq: ProxyRequest): Promise<ProxyResponse> {
+    // Resolve deployment: deploymentMap override → default deployment → request model name
+    const requestModel = (proxyReq.body as any)?.model;
+    const deployment = (requestModel && this.deploymentMap[requestModel])
+      || this.deployment
+      || requestModel;
+
     const url =
-      `${this.endpoint}/openai/deployments/${this.deployment}` +
+      `${this.endpoint}/openai/deployments/${deployment}` +
       `/chat/completions?api-version=${this.apiVersion}`;
 
     const headers: Record<string, string> = {
