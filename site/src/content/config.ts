@@ -29,4 +29,17 @@ const blog = defineCollection({
   }),
 });
 
-export const collections = { docs, developers, blog };
+const devblog = defineCollection({
+  type: 'content',
+  schema: z.object({
+    title: z.string(),
+    date: z.date(),
+    author: z.string(),
+    description: z.string(),
+    tags: z.array(z.string()).default([]),
+    series: z.string().optional(),
+    agentRole: z.string().optional(),
+  }),
+});
+
+export const collections = { docs, developers, blog, devblog };

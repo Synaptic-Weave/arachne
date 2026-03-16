@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import ToggleSwitch from './ToggleSwitch';
 
 interface ModelListEditorProps {
   models: string[] | null;
@@ -49,15 +50,7 @@ export default function ModelListEditor({ models, onChange, defaultModels, label
         )}
       </div>
 
-      <label className="flex items-center gap-2 cursor-pointer">
-        <input
-          type="checkbox"
-          checked={isCustom}
-          onChange={e => handleToggle(e.target.checked)}
-          className="accent-indigo-500"
-        />
-        <span className="text-sm text-gray-400">Use custom model list</span>
-      </label>
+      <ToggleSwitch checked={isCustom} onChange={handleToggle} label="Use custom model list" />
 
       {!isCustom && (
         <p className="text-xs text-gray-600">

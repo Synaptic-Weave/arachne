@@ -3,6 +3,7 @@ import { api } from '../lib/api';
 import type { Member, Invite } from '../lib/api';
 import { getToken } from '../lib/auth';
 import { useAuth } from '../context/AuthContext';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 function formatDate(iso: string | null): string {
   if (!iso) return '—';
@@ -31,6 +32,7 @@ export default function MembersPage() {
   const [roleChanging, setRoleChanging] = useState<Record<string, boolean>>({});
   const [removing, setRemoving] = useState<Record<string, boolean>>({});
   const [revoking, setRevoking] = useState<Record<string, boolean>>({});
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
 
   const token = getToken()!;
 
@@ -73,7 +75,6 @@ export default function MembersPage() {
   }
 
   async function handleRemove(memberId: string) {
-    if (!confirm('Remove this member from the organization?')) return;
     setRemoving(s => ({ ...s, [memberId]: true }));
     try {
       await api.removeMember(token, memberId);
@@ -82,6 +83,7 @@ export default function MembersPage() {
       setError(err instanceof Error ? err.message : 'Failed to remove member');
     } finally {
       setRemoving(s => ({ ...s, [memberId]: false }));
+      setConfirmRemove(null);
     }
   }
 
@@ -162,13 +164,14 @@ export default function MembersPage() {
           <p className="text-gray-500 animate-pulse">Loading…</p>
         ) : (
           <div className="bg-gray-900 border border-gray-700 rounded-xl overflow-hidden">
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-700 text-gray-400 text-left">
-                  <th className="px-4 py-3 font-medium">Email</th>
-                  <th className="px-4 py-3 font-medium">Role</th>
-                  <th className="px-4 py-3 font-medium">Joined</th>
-                  {isOwner && <th className="px-4 py-3 font-medium">Actions</th>}
+                <tr className="border-b border-gray-700 text-left">
+                  <th className="px-4 py-3 text-left text-xs uppercase tracking-wide text-gray-500 font-medium">Email</th>
+                  <th className="px-4 py-3 text-left text-xs uppercase tracking-wide text-gray-500 font-medium">Role</th>
+                  <th className="px-4 py-3 text-left text-xs uppercase tracking-wide text-gray-500 font-medium">Joined</th>
+                  {isOwner && <th className="px-4 py-3 text-left text-xs uppercase tracking-wide text-gray-500 font-medium">Actions</th>}
                 </tr>
               </thead>
               <tbody>
@@ -198,7 +201,7 @@ export default function MembersPage() {
                             <option value="member">Member</option>
                           </select>
                         ) : (
-                          <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
                             ${member.role === 'owner' ? 'bg-indigo-900/50 text-indigo-300' : 'bg-gray-700 text-gray-300'}`}>
                             {member.role}
                           </span>
@@ -208,12 +211,12 @@ export default function MembersPage() {
                       {isOwner && (
                         <td className="px-4 py-3">
                           <button
-                            onClick={() => handleRemove(member.id)}
+                            onClick={() => setConfirmRemove(member.id)}
                             disabled={isSelf || isLastOwner || removing[member.id]}
                             title={isSelf ? "Can't remove yourself" : isLastOwner ? "Can't remove last owner" : 'Remove member'}
                             className="text-xs text-red-500 hover:text-red-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                           >
-                            {removing[member.id] ? 'Removing…' : 'Remove'}
+                            Remove
                           </button>
                         </td>
                       )}
@@ -222,6 +225,7 @@ export default function MembersPage() {
                 })}
               </tbody>
             </table>
+            </div>
           </div>
         )}
       </section>
@@ -322,13 +326,14 @@ export default function MembersPage() {
             <p className="text-gray-600 text-sm">No active invite links.</p>
           ) : (
             <div className="bg-gray-900 border border-gray-700 rounded-xl overflow-hidden mb-4">
+              <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-gray-700 text-gray-400 text-left">
-                    <th className="px-4 py-3 font-medium">Link</th>
-                    <th className="px-4 py-3 font-medium">Uses</th>
-                    <th className="px-4 py-3 font-medium">Expires</th>
-                    <th className="px-4 py-3 font-medium">Actions</th>
+                  <tr className="border-b border-gray-700 text-left">
+                    <th className="px-4 py-3 text-left text-xs uppercase tracking-wide text-gray-500 font-medium">Link</th>
+                    <th className="px-4 py-3 text-left text-xs uppercase tracking-wide text-gray-500 font-medium">Uses</th>
+                    <th className="px-4 py-3 text-left text-xs uppercase tracking-wide text-gray-500 font-medium">Expires</th>
+                    <th className="px-4 py-3 text-left text-xs uppercase tracking-wide text-gray-500 font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -362,6 +367,7 @@ export default function MembersPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           )}
 
@@ -372,12 +378,13 @@ export default function MembersPage() {
                 {revokedInvites.length} revoked / expired invite{revokedInvites.length !== 1 ? 's' : ''}
               </summary>
               <div className="mt-3 bg-gray-900 border border-gray-800 rounded-xl overflow-hidden opacity-60">
+                <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-gray-800 text-gray-500 text-left">
-                      <th className="px-4 py-3 font-medium">Link</th>
-                      <th className="px-4 py-3 font-medium">Uses</th>
-                      <th className="px-4 py-3 font-medium">Expired/Revoked</th>
+                    <tr className="border-b border-gray-800 text-left">
+                      <th className="px-4 py-3 text-left text-xs uppercase tracking-wide text-gray-500 font-medium">Link</th>
+                      <th className="px-4 py-3 text-left text-xs uppercase tracking-wide text-gray-500 font-medium">Uses</th>
+                      <th className="px-4 py-3 text-left text-xs uppercase tracking-wide text-gray-500 font-medium">Expired/Revoked</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -392,11 +399,23 @@ export default function MembersPage() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               </div>
             </details>
           )}
         </section>
       )}
+
+      <ConfirmDialog
+        open={confirmRemove !== null}
+        onClose={() => setConfirmRemove(null)}
+        onConfirm={() => { if (confirmRemove) handleRemove(confirmRemove); }}
+        title="Remove member"
+        description="Remove this member from the organization? They will lose access immediately."
+        confirmLabel="Remove"
+        confirmVariant="danger"
+        loading={confirmRemove !== null && !!removing[confirmRemove]}
+      />
     </div>
   );
 }

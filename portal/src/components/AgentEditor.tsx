@@ -3,6 +3,7 @@ import { api } from '../lib/api';
 import type { Agent, AgentInput, AgentMergePolicies, Skill, McpEndpoint, ResolvedAgentConfig, KnowledgeBase, AvailableProvider } from '../lib/api';
 import { getToken } from '../lib/auth';
 import ModelListEditor from './ModelListEditor';
+import ToggleSwitch from './ToggleSwitch';
 import { COMMON_MODELS } from '../lib/models';
 
 function slugify(str: string): string {
@@ -494,17 +495,7 @@ export default function AgentEditor({ agent, onSave, onCancel }: AgentEditorProp
             <span className="text-sm text-gray-200">Enable conversations</span>
             <p className="text-xs text-gray-500 mt-0.5">Store and resume conversation history for this agent</p>
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={conversationsEnabled}
-            onClick={() => setConversationsEnabled(v => !v)}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-gray-950 ${conversationsEnabled ? 'bg-indigo-600' : 'bg-gray-700'}`}
-          >
-            <span
-              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${conversationsEnabled ? 'translate-x-6' : 'translate-x-1'}`}
-            />
-          </button>
+          <ToggleSwitch checked={conversationsEnabled} onChange={setConversationsEnabled} />
         </div>
         {conversationsEnabled && (
           <>

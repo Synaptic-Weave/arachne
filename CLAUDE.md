@@ -8,6 +8,53 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Stack:** Node.js 25.2.1+, TypeScript, Fastify, PostgreSQL 16, MikroORM, undici, Vite + React
 
+## Agentic Development Team
+
+Claude operates as **Operator** — a team coordinator that dispatches work to specialized sub-agents. The Product Owner and Chief Architect is **Michael**.
+
+### Team Roster (12 agents)
+
+| Agent | Role | Sub-agent Type |
+|-------|------|---------------|
+| Neo | Product Vision Interpreter | Plan |
+| Morpheus | Scrum Master | Plan |
+| Trinity | UX Architect | Plan |
+| Switch | Frontend Engineer | general-purpose |
+| Tank | Backend Engineer | general-purpose |
+| Architect | Domain Modeling Expert | Plan |
+| Mouse | Test Engineer | general-purpose |
+| Oracle | AI Systems Advisor | Plan |
+| Niobe | Security Engineer | Explore / general-purpose |
+| Cipher | Pentester & Attack Stories | Explore / general-purpose |
+| Agent Smith | Code Review & Quality | Explore / general-purpose |
+| Merovingian | System Impact Analyst | Explore |
+
+Agent prompt files are in `~/.claude/projects/-Users-michaelbrown-projects-loom/memory/agents/{name}/prompt.md`.
+
+### Operator Protocol
+
+1. Read the agent's `prompt.md` before spawning
+2. Load Tier 1 general knowledge (`~/.claude/memory/agents/{name}/general.md`) + Tier 2 project knowledge (project memory `agents/{name}/findings.md`)
+3. Inject both into the agent's prompt as accumulated knowledge
+4. After completion: classify new findings as general or project-specific, save to appropriate tier
+5. Append a timestamped blog entry to the agent's `blog.md`
+
+### Process (from TEAM_CHARTER.md)
+
+- **Lean principles** — measure lead time (not velocity)
+- **Swarming** — team converges on one story; unfeasibility triggers allow picking up a second
+- **Vertical slices** — every story delivers user-visible value across the full stack
+- **Gitflow** — feature branches off `develop`, only Michael merges to `main`
+- **Branch naming** — `[type]/[issue-number]-short-title`
+
+### Key Architectural Decisions In Progress
+
+- **Agent Spec vs Deployment** — Agent entity is the mutable spec (testable via sandbox). Deployments are stable slots with their own API keys. Deploy weaves spec → .orb → pushes to registry → deploys to staging. Promote swaps staging → production.
+- **Skills → Tools unification** — Skills (client-side), MCP endpoints (external), and Tool Packages (sandboxed) all unified under `tools`. See `docs/system_specs/`.
+- **Principals** — End-user identity via `X-Arachne-Principal` header. Auto-created on first use.
+- **Agent Teams** — Multi-agent coordination via coordinator pattern.
+- **Unified CLI** — One set of commands (`weave/push/deploy`) for all artifact kinds. `arachne init --kind <type>` for scaffolding.
+
 ## Common Development Commands
 
 ### Environment Setup
@@ -360,3 +407,8 @@ npm run docs:generate     # Generates UI docs from screenshots
 - `docs/cli.md` — CLI reference for agent weave/push/deploy
 - `docs/rag-inference.md` — RAG retrieval and embedding pipeline
 - `docs/portal-guide.md` — Portal UI usage guide
+- `docs/product-roadmap.md` — 4-phase product roadmap (beta → production → differentiation → ecosystem)
+- `docs/feature-roadmap.md` — 60+ features across 10 categories with priorities
+- `docs/system_specs/agent_tools.md` — Tool execution specification (draft)
+- `docs/system_specs/arachne_tool_package_spec.md` — Tool package format specification (draft)
+- `TEAM_CHARTER.md` — Team process, quality standards, gitflow, definition of done

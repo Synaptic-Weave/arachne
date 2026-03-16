@@ -1,0 +1,184 @@
+---
+import { getCollection } from 'astro:content';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+const allPosts = (await getCollection('devblog')).sort(
+  (a, b) => b.data.date.getTime() - a.data.date.getTime()
+);
+
+export async function getStaticPaths() {
+  const entries = await getCollection('devblog');
+  const sorted = entries.sort(
+    (a, b) => b.data.date.getTime() - a.data.date.getTime()
+  );
+  return sorted.map((entry, i) => ({
+    params: { slug: entry.slug },
+    props: {
+      entry,
+      prev: sorted[i + 1] ?? null,
+      next: sorted[i - 1] ?? null,
+    },
+  }));
+}
+
+const { entry, prev, next } = Astro.props;
+const { Content } = await entry.render();
+
+const agentColors: Record<string, string> = {
+  'Neo': 'bg-green-950 text-green-300 border-green-800',
+  'Morpheus': 'bg-blue-950 text-blue-300 border-blue-800',
+  'Architect': 'bg-purple-950 text-purple-300 border-purple-800',
+  'Trinity': 'bg-pink-950 text-pink-300 border-pink-800',
+  'Tank': 'bg-orange-950 text-orange-300 border-orange-800',
+  'Switch': 'bg-cyan-950 text-cyan-300 border-cyan-800',
+  'Oracle': 'bg-amber-950 text-amber-300 border-amber-800',
+  'Mouse': 'bg-lime-950 text-lime-300 border-lime-800',
+  'Niobe': 'bg-red-950 text-red-300 border-red-800',
+  'Cipher': 'bg-emerald-950 text-emerald-300 border-emerald-800',
+  'Agent Smith': 'bg-gray-800 text-gray-300 border-gray-600',
+  'Merovingian': 'bg-violet-950 text-violet-300 border-violet-800',
+};
+
+const defaultColor = 'bg-indigo-950 text-indigo-300 border-indigo-800';
+
+const authors = [...new Set(allPosts.map(p => p.data.author))].sort();
+---
+
+<BaseLayout title={`${entry.data.title} — Developer Blog`} description={entry.data.description}>
+  <div class="max-w-7xl mx-auto px-4 sm:px-8 py-16 flex gap-12">
+    {/* Main content */}
+    <article class="flex-1 min-w-0">
+      <div class="mb-8">
+        <div class="flex items-center gap-3 text-sm text-gray-500 mb-3">
+          <time datetime={entry.data.date.toISOString()}>
+            {entry.data.date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+          </time>
+          <span>&middot;</span>
+          <span class={`text-xs px-2 py-0.5 rounded-full border ${agentColors[entry.data.author] ?? defaultColor}`}>
+            {entry.data.author}
+          </span>
+          {entry.data.agentRole && (
+            <>
+              <span>&middot;</span>
+              <span class="text-gray-600">{entry.data.agentRole}</span>
+            </>
+          )}
+        </div>
+        <h1 class="text-4xl font-bold text-white mb-3">{entry.data.title}</h1>
+        <p class="text-lg text-gray-400">{entry.data.description}</p>
+      </div>
+
+      <div class="prose-dark">
+        <Content />
+      </div>
+
+      {/* Prev / Next navigation */}
+      <div class="mt-12 pt-8 border-t border-gray-800 grid grid-cols-2 gap-4">
+        {prev ? (
+          <a href={`/developer-blog/${prev.slug}`} class="group block p-4 rounded-lg border border-gray-800 hover:border-gray-700 transition-colors">
+            <span class="text-xs text-gray-600 block mb-1">&larr; Older</span>
+            <span class="text-sm font-medium text-gray-400 group-hover:text-white transition-colors line-clamp-2">{prev.data.title}</span>
+            <span class={`inline-block text-xs px-1.5 py-0.5 rounded-full border mt-2 ${agentColors[prev.data.author] ?? defaultColor}`}>
+              {prev.data.author}
+            </span>
+          </a>
+        ) : <div />}
+        {next ? (
+          <a href={`/developer-blog/${next.slug}`} class="group block p-4 rounded-lg border border-gray-800 hover:border-gray-700 transition-colors text-right">
+            <span class="text-xs text-gray-600 block mb-1">Newer &rarr;</span>
+            <span class="text-sm font-medium text-gray-400 group-hover:text-white transition-colors line-clamp-2">{next.data.title}</span>
+            <span class={`inline-block text-xs px-1.5 py-0.5 rounded-full border mt-2 ${agentColors[next.data.author] ?? defaultColor}`}>
+              {next.data.author}
+            </span>
+          </a>
+        ) : <div />}
+      </div>
+    </article>
+
+    {/* Sidebar — author filter + post list */}
+    <aside class="hidden lg:block w-64 shrink-0">
+      <nav class="sticky top-8">
+        {/* Author filter */}
+        <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-3">Filter by Author</h3>
+        <div class="flex flex-wrap gap-1.5 mb-6" id="author-filters">
+          <button
+            data-author="all"
+            class="author-btn text-xs px-2 py-0.5 rounded-full border border-indigo-700 bg-indigo-950 text-indigo-300 cursor-pointer transition-colors"
+          >
+            All
+          </button>
+          {authors.map(author => (
+            <button
+              data-author={author}
+              class={`author-btn text-xs px-2 py-0.5 rounded-full border cursor-pointer transition-colors opacity-60 hover:opacity-100 ${agentColors[author] ?? defaultColor}`}
+            >
+              {author}
+            </button>
+          ))}
+        </div>
+
+        {/* Post list */}
+        <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-4">All Posts</h3>
+        <div class="space-y-3" id="post-list">
+          {allPosts.map(post => (
+            <a
+              href={`/developer-blog/${post.slug}`}
+              data-post-author={post.data.author}
+              class:list={[
+                'post-item block rounded-lg p-3 transition-colors',
+                post.slug === entry.slug
+                  ? 'bg-gray-800 border border-gray-700'
+                  : 'hover:bg-gray-900',
+              ]}
+            >
+              <div class="flex items-center gap-2 mb-1">
+                <span class={`inline-block w-2 h-2 rounded-full ${(agentColors[post.data.author] ?? defaultColor).split(' ')[0]}`} />
+                <span class="text-xs text-gray-500">{post.data.author}</span>
+              </div>
+              <h4 class:list={[
+                'text-sm font-medium leading-snug',
+                post.slug === entry.slug ? 'text-white' : 'text-gray-400',
+              ]}>
+                {post.data.title}
+              </h4>
+              <time class="text-xs text-gray-600 mt-1 block" datetime={post.data.date.toISOString()}>
+                {post.data.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+              </time>
+            </a>
+          ))}
+        </div>
+      </nav>
+    </aside>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const buttons = document.querySelectorAll<HTMLButtonElement>('.author-btn');
+      const posts = document.querySelectorAll<HTMLElement>('.post-item');
+
+      buttons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          const author = btn.dataset.author;
+
+          buttons.forEach(b => {
+            if (b.dataset.author === author) {
+              b.classList.remove('opacity-60');
+              b.classList.add('opacity-100');
+            } else {
+              b.classList.add('opacity-60');
+              b.classList.remove('opacity-100');
+            }
+          });
+
+          posts.forEach(post => {
+            if (author === 'all' || post.dataset.postAuthor === author) {
+              post.style.display = '';
+            } else {
+              post.style.display = 'none';
+            }
+          });
+        });
+      });
+    });
+  </script>
+</BaseLayout>

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -96,14 +96,18 @@ describe('AgentsPage', () => {
   it('deletes agent when delete button is clicked and confirmed', async () => {
     vi.mocked(api.listAgents).mockResolvedValue({ agents: mockAgents });
     vi.mocked(api.deleteAgent).mockResolvedValue(undefined);
-    global.confirm = vi.fn(() => true);
     const user = userEvent.setup();
     renderPage();
     await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
-    
+
     const deleteButtons = screen.getAllByRole('button', { name: /delete/i });
     await user.click(deleteButtons[0]);
-    
+
+    // Confirm dialog should appear — find the confirm button inside the dialog
+    const dialog = await waitFor(() => screen.getByRole('dialog'));
+    const confirmButton = within(dialog).getByRole('button', { name: /^delete$/i });
+    await user.click(confirmButton);
+
     await waitFor(() => expect(api.deleteAgent).toHaveBeenCalledWith('tok', 'a1'));
   });
 });

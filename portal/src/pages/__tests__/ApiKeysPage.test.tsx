@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -122,18 +122,22 @@ describe('ApiKeysPage', () => {
     expect(screen.getByTestId('api-key-reveal')).toBeInTheDocument();
   });
 
-  it('revokes API key when revoke button is clicked', async () => {
+  it('revokes API key when revoke button is clicked and confirmed', async () => {
     vi.mocked(api.listApiKeys).mockResolvedValue({ apiKeys: mockKeys });
     vi.mocked(api.listAgents).mockResolvedValue({ agents: mockAgents });
     vi.mocked(api.revokeApiKey).mockResolvedValue(undefined);
-    global.confirm = vi.fn(() => true);
     const user = userEvent.setup();
     renderPage();
     await waitFor(() => expect(screen.getByText('Production')).toBeInTheDocument());
-    
+
     const revokeButton = screen.getByRole('button', { name: /revoke/i });
     await user.click(revokeButton);
-    
+
+    // Confirm dialog should appear — find the confirm button inside the dialog
+    const dialog = await waitFor(() => screen.getByRole('dialog'));
+    const confirmButton = within(dialog).getByRole('button', { name: /^revoke$/i });
+    await user.click(confirmButton);
+
     await waitFor(() => expect(api.revokeApiKey).toHaveBeenCalledWith('tok', 'k1'));
   });
 });

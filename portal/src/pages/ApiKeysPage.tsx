@@ -3,6 +3,7 @@ import { api } from '../lib/api';
 import type { ApiKeyEntry, ApiKeyCreated, Agent } from '../lib/api';
 import { getToken } from '../lib/auth';
 import ApiKeyReveal from '../components/ApiKeyReveal';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 export default function ApiKeysPage() {
   const [keys, setKeys] = useState<ApiKeyEntry[]>([]);
@@ -16,6 +17,8 @@ export default function ApiKeysPage() {
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState('');
   const [revealKey, setRevealKey] = useState<ApiKeyCreated | null>(null);
+  const [confirmRevoke, setConfirmRevoke] = useState<{ id: string; name: string } | null>(null);
+  const [revoking, setRevoking] = useState(false);
 
   useEffect(() => {
     fetchKeys();
@@ -64,8 +67,8 @@ export default function ApiKeysPage() {
     }
   }
 
-  async function handleRevoke(id: string, name: string) {
-    if (!window.confirm(`Revoke API key "${name}"? This cannot be undone.`)) return;
+  async function handleRevoke(id: string) {
+    setRevoking(true);
     try {
       const token = getToken()!;
       await api.revokeApiKey(token, id);
@@ -73,7 +76,10 @@ export default function ApiKeysPage() {
         prev.map(k => k.id === id ? { ...k, status: 'revoked', revokedAt: new Date().toISOString() } : k)
       );
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Revoke failed');
+      setError(err instanceof Error ? err.message : 'Revoke failed');
+    } finally {
+      setRevoking(false);
+      setConfirmRevoke(null);
     }
   }
 
@@ -187,26 +193,27 @@ export default function ApiKeysPage() {
           </div>
         )}
         {!loading && keys.length > 0 && (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-700 text-xs uppercase tracking-wide text-gray-500">
-                <th className="px-5 py-3 text-left font-medium">Name</th>
-                <th className="px-5 py-3 text-left font-medium">Agent</th>
-                <th className="px-5 py-3 text-left font-medium">Prefix</th>
-                <th className="px-5 py-3 text-left font-medium">Status</th>
-                <th className="px-5 py-3 text-left font-medium">Created</th>
-                <th className="px-5 py-3 text-right font-medium"></th>
+              <tr className="border-b border-gray-700 text-left">
+                <th className="px-4 py-3 text-left text-xs uppercase tracking-wide text-gray-500 font-medium">Name</th>
+                <th className="px-4 py-3 text-left text-xs uppercase tracking-wide text-gray-500 font-medium">Agent</th>
+                <th className="px-4 py-3 text-left text-xs uppercase tracking-wide text-gray-500 font-medium">Prefix</th>
+                <th className="px-4 py-3 text-left text-xs uppercase tracking-wide text-gray-500 font-medium">Status</th>
+                <th className="px-4 py-3 text-left text-xs uppercase tracking-wide text-gray-500 font-medium">Created</th>
+                <th className="px-4 py-3 text-right text-xs uppercase tracking-wide text-gray-500 font-medium"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800">
               {keys.map(key => (
                 <tr key={key.id} className="hover:bg-gray-800/50 transition-colors">
-                  <td className="px-5 py-3 text-gray-100">
+                  <td className="px-4 py-3 text-gray-100">
                     <span className={key.status === 'revoked' ? 'line-through text-gray-500' : ''}>
                       {key.name}
                     </span>
                   </td>
-                  <td className="px-5 py-3 text-gray-400 text-xs">
+                  <td className="px-4 py-3 text-gray-400 text-xs">
                     {key.agentName
                       ? key.agentName
                       : key.agentId
@@ -214,10 +221,10 @@ export default function ApiKeysPage() {
                         : <span className="text-gray-600">—</span>
                     }
                   </td>
-                  <td className="px-5 py-3 font-mono text-gray-400 text-xs">
+                  <td className="px-4 py-3 font-mono text-gray-400 text-xs">
                     {key.keyPrefix}…
                   </td>
-                  <td className="px-5 py-3">
+                  <td className="px-4 py-3">
                     <span
                       className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                         key.status === 'active'
@@ -228,13 +235,13 @@ export default function ApiKeysPage() {
                       {key.status}
                     </span>
                   </td>
-                  <td className="px-5 py-3 text-gray-400">
+                  <td className="px-4 py-3 text-gray-400">
                     {new Date(key.createdAt).toLocaleDateString()}
                   </td>
-                  <td className="px-5 py-3 text-right">
+                  <td className="px-4 py-3 text-right">
                     {key.status === 'active' && (
                       <button
-                        onClick={() => handleRevoke(key.id, key.name)}
+                        onClick={() => setConfirmRevoke({ id: key.id, name: key.name })}
                         className="text-xs text-red-400 hover:text-red-300 transition-colors"
                       >
                         Revoke
@@ -250,8 +257,20 @@ export default function ApiKeysPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirmRevoke !== null}
+        onClose={() => setConfirmRevoke(null)}
+        onConfirm={() => { if (confirmRevoke) handleRevoke(confirmRevoke.id); }}
+        title="Revoke API key"
+        description={confirmRevoke ? `Revoke API key "${confirmRevoke.name}"? This cannot be undone.` : ''}
+        confirmLabel="Revoke"
+        confirmVariant="danger"
+        loading={revoking}
+      />
     </div>
   );
 }

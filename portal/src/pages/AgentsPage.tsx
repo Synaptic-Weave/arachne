@@ -4,6 +4,7 @@ import type { Agent } from '../lib/api';
 import { getToken } from '../lib/auth';
 import AgentEditor from '../components/AgentEditor';
 import AgentSandbox from '../components/AgentSandbox';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 function truncate(str: string | null | undefined, len: number): string {
   if (!str) return '—';
@@ -26,6 +27,7 @@ export default function AgentsPage() {
   const [editor, setEditor] = useState<EditorState>({ mode: 'closed' });
   const [sandbox, setSandbox] = useState<SandboxState>({ mode: 'closed' });
   const [deleting, setDeleting] = useState<Record<string, boolean>>({});
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   const token = getToken()!;
 
@@ -43,7 +45,6 @@ export default function AgentsPage() {
   useEffect(() => { loadAgents(); }, [loadAgents]);
 
   async function handleDelete(id: string) {
-    if (!confirm('Delete this agent? This cannot be undone.')) return;
     setDeleting(s => ({ ...s, [id]: true }));
     try {
       await api.deleteAgent(token, id);
@@ -52,6 +53,7 @@ export default function AgentsPage() {
       setError(err instanceof Error ? err.message : 'Failed to delete agent');
     } finally {
       setDeleting(s => ({ ...s, [id]: false }));
+      setConfirmDelete(null);
     }
   }
 
@@ -122,14 +124,15 @@ export default function AgentsPage() {
         </div>
       ) : agents.length > 0 ? (
         <div className="bg-gray-900 border border-gray-700 rounded-xl overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-700 text-gray-400 text-left">
-                <th className="px-4 py-3 font-medium">Name</th>
-                <th className="px-4 py-3 font-medium">System Prompt</th>
-                <th className="px-4 py-3 font-medium">Skills</th>
-                <th className="px-4 py-3 font-medium">MCP Endpoints</th>
-                <th className="px-4 py-3 font-medium">Actions</th>
+              <tr className="border-b border-gray-700 text-left">
+                <th className="px-4 py-3 text-left text-xs uppercase tracking-wide text-gray-500 font-medium">Name</th>
+                <th className="px-4 py-3 text-left text-xs uppercase tracking-wide text-gray-500 font-medium">System Prompt</th>
+                <th className="px-4 py-3 text-left text-xs uppercase tracking-wide text-gray-500 font-medium">Skills</th>
+                <th className="px-4 py-3 text-left text-xs uppercase tracking-wide text-gray-500 font-medium">MCP Endpoints</th>
+                <th className="px-4 py-3 text-left text-xs uppercase tracking-wide text-gray-500 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -157,17 +160,18 @@ export default function AgentsPage() {
                       Edit
                     </button>
                     <button
-                      onClick={() => handleDelete(agent.id)}
+                      onClick={() => setConfirmDelete(agent.id)}
                       disabled={deleting[agent.id] || isEditorOpen || isSandboxOpen}
                       className="text-xs text-red-500 hover:text-red-400 disabled:opacity-40 transition-colors"
                     >
-                      {deleting[agent.id] ? 'Deleting…' : 'Delete'}
+                      Delete
                     </button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       ) : null}
 
@@ -178,6 +182,17 @@ export default function AgentsPage() {
           onClose={() => setSandbox({ mode: 'closed' })}
         />
       )}
+
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={() => { if (confirmDelete) handleDelete(confirmDelete); }}
+        title="Delete agent"
+        description="This cannot be undone. The agent and its configuration will be permanently removed."
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        loading={confirmDelete !== null && !!deleting[confirmDelete]}
+      />
     </div>
   );
 }

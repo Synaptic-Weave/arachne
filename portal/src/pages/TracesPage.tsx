@@ -115,7 +115,7 @@ export default function TracesPage() {
                     <td className="px-4 py-3 text-gray-200 font-mono text-xs">{trace.model}</td>
                     <td className="px-4 py-3 text-gray-400 text-xs">{trace.provider}</td>
                     <td className="px-4 py-3">
-                      <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${statusBadge(trace.status_code)}`}>
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusBadge(trace.status_code)}`}>
                         {trace.status_code ?? '—'}
                       </span>
                     </td>

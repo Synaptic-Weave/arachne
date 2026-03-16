@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../lib/api';
 import type { KnowledgeBase } from '../lib/api';
 import { getToken } from '../lib/auth';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString('en-US', {
@@ -17,6 +18,7 @@ export default function KnowledgeBasesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [deleting, setDeleting] = useState<Record<string, boolean>>({});
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   // Creation panel state
   const [showCreate, setShowCreate] = useState(false);
@@ -59,7 +61,6 @@ export default function KnowledgeBasesPage() {
   useEffect(() => { loadKbs(); loadEmbedderInfo(); }, [loadKbs, loadEmbedderInfo]);
 
   async function handleDelete(id: string) {
-    if (!confirm('Delete this knowledge base? This cannot be undone.')) return;
     setDeleting(s => ({ ...s, [id]: true }));
     try {
       await api.deleteKnowledgeBase(token, id);
@@ -68,6 +69,7 @@ export default function KnowledgeBasesPage() {
       setError(err instanceof Error ? err.message : 'Failed to delete knowledge base');
     } finally {
       setDeleting(s => ({ ...s, [id]: false }));
+      setConfirmDelete(null);
     }
   }
 
@@ -120,7 +122,7 @@ export default function KnowledgeBasesPage() {
         </div>
         <button
           onClick={() => setShowCreate(!showCreate)}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg transition-colors"
+          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm rounded-lg transition-colors"
         >
           {showCreate ? 'Cancel' : '+ New Knowledge Base'}
         </button>
@@ -224,7 +226,7 @@ export default function KnowledgeBasesPage() {
           <button
             onClick={handleCreate}
             disabled={creating || !createName.trim() || createFiles.length === 0 || embedderAvailable === false}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:hover:bg-blue-600 text-white text-sm rounded-lg transition-colors"
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:hover:bg-indigo-600 text-white text-sm rounded-lg transition-colors"
           >
             {creating ? 'Creating... (chunking & embedding)' : 'Create'}
           </button>
@@ -232,6 +234,7 @@ export default function KnowledgeBasesPage() {
       )}
 
       <div className="bg-gray-900 border border-gray-700 rounded-xl overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-700 text-left">
@@ -272,11 +275,11 @@ export default function KnowledgeBasesPage() {
                   <td className="px-4 py-3 text-gray-400 text-xs">{formatDate(kb.createdAt)}</td>
                   <td className="px-4 py-3">
                     <button
-                      onClick={() => handleDelete(kb.id)}
+                      onClick={() => setConfirmDelete(kb.id)}
                       disabled={deleting[kb.id]}
                       className="text-xs text-red-500 hover:text-red-400 disabled:opacity-40 transition-colors"
                     >
-                      {deleting[kb.id] ? 'Deleting…' : 'Delete'}
+                      Delete
                     </button>
                   </td>
                 </tr>
@@ -284,7 +287,19 @@ export default function KnowledgeBasesPage() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={() => { if (confirmDelete) handleDelete(confirmDelete); }}
+        title="Delete knowledge base"
+        description="This cannot be undone. All chunks and embeddings will be permanently removed."
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        loading={confirmDelete !== null && !!deleting[confirmDelete]}
+      />
     </div>
   );
 }

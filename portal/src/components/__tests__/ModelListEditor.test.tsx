@@ -25,20 +25,20 @@ describe('ModelListEditor', () => {
   it('shows defaults text and unchecked checkbox when models is null', () => {
     render(<ModelListEditor models={null} onChange={onChange} defaultModels={defaultModels} />);
     expect(screen.getByText(/gpt-4o, gpt-3\.5-turbo/)).toBeInTheDocument();
-    expect(screen.getByRole('checkbox')).not.toBeChecked();
+    expect(screen.getByRole('switch')).not.toBeChecked();
   });
 
   it('enables custom list when checkbox is checked', async () => {
     const user = userEvent.setup();
     render(<ModelListEditor models={null} onChange={onChange} defaultModels={defaultModels} />);
-    await user.click(screen.getByRole('checkbox'));
+    await user.click(screen.getByRole('switch'));
     expect(onChange).toHaveBeenCalledWith(defaultModels);
   });
 
   it('disables custom list when checkbox is unchecked', async () => {
     const user = userEvent.setup();
     render(<ModelListEditor models={['gpt-4o']} onChange={onChange} defaultModels={defaultModels} />);
-    await user.click(screen.getByRole('checkbox'));
+    await user.click(screen.getByRole('switch'));
     expect(onChange).toHaveBeenCalledWith(null);
   });
 
