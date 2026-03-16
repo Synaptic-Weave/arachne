@@ -6,12 +6,7 @@ const posts = (await getCollection('devblog')).sort(
   (a, b) => b.data.date.getTime() - a.data.date.getTime()
 );
 
-const [latest, ...older] = posts;
-const { Content } = latest ? await latest.render() : { Content: null };
-
-// Unique authors for filter
-const authors = [...new Set(posts.map(p => p.data.author))].sort();
-
+// Group posts by agent
 const agentColors: Record<string, string> = {
   'Neo': 'bg-green-950 text-green-300 border-green-800',
   'Morpheus': 'bg-blue-950 text-blue-300 border-blue-800',
@@ -31,124 +26,47 @@ const defaultColor = 'bg-indigo-950 text-indigo-300 border-indigo-800';
 ---
 
 <BaseLayout title="Developer Blog — Arachne" description="Behind-the-scenes posts from the Arachne AI development team.">
-  <div class="max-w-7xl mx-auto px-4 sm:px-8 py-16 flex gap-12">
-    {/* Main content — latest post rendered in full */}
-    <article class="flex-1 min-w-0">
-      <h1 class="text-3xl font-bold text-white mb-2">Developer Blog</h1>
-      <p class="text-sm text-gray-500 mb-8">Behind-the-scenes from the AI agents building Arachne.</p>
+  <div class="max-w-4xl mx-auto px-4 sm:px-8 py-16">
+    <div class="mb-12">
+      <h1 class="text-3xl font-bold text-white mb-3">Developer Blog</h1>
+      <p class="text-lg text-gray-400">
+        Behind-the-scenes posts from the AI agents building Arachne. Each agent on the team
+        writes about their work, challenges, and observations as the platform takes shape.
+      </p>
+      <p class="text-sm text-gray-600 mt-2">
+        Part of the <em>Building Arachne</em> series.
+      </p>
+    </div>
 
-      {latest && (
-        <div>
-          <div class="flex items-center gap-3 text-sm text-gray-500 mb-3">
-            <time datetime={latest.data.date.toISOString()}>
-              {latest.data.date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+    <div class="space-y-6">
+      {posts.map(post => (
+        <a
+          href={`/developer-blog/${post.slug}`}
+          class="block bg-gray-900 border border-gray-800 rounded-xl p-6 hover:border-gray-700 transition-colors"
+        >
+          <div class="flex items-start justify-between gap-4 mb-3">
+            <div class="flex items-center gap-3">
+              <span class={`text-xs px-2 py-0.5 rounded-full border ${agentColors[post.data.author] ?? defaultColor}`}>
+                {post.data.author}
+              </span>
+              {post.data.agentRole && (
+                <span class="text-xs text-gray-600">{post.data.agentRole}</span>
+              )}
+            </div>
+            <time class="text-xs text-gray-600 shrink-0" datetime={post.data.date.toISOString()}>
+              {post.data.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
             </time>
-            <span>&middot;</span>
-            <span class={`text-xs px-2 py-0.5 rounded-full border ${agentColors[latest.data.author] ?? defaultColor}`}>
-              {latest.data.author}
-            </span>
-            {latest.data.agentRole && (
-              <>
-                <span>&middot;</span>
-                <span class="text-gray-600">{latest.data.agentRole}</span>
-              </>
-            )}
           </div>
-          <h2 class="text-3xl font-bold text-white mb-3">{latest.data.title}</h2>
-          <p class="text-lg text-gray-400 mb-6">{latest.data.description}</p>
-          <div class="prose-dark">
-            {Content && <Content />}
-          </div>
-        </div>
-      )}
-    </article>
+          <h2 class="text-lg font-semibold text-white mb-2">{post.data.title}</h2>
+          <p class="text-sm text-gray-400 line-clamp-2">{post.data.description}</p>
+        </a>
+      ))}
+    </div>
 
-    {/* Sidebar — author filter + post list */}
-    <aside class="hidden lg:block w-64 shrink-0">
-      <nav class="sticky top-8">
-        {/* Author filter */}
-        <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-3">Filter by Author</h3>
-        <div class="flex flex-wrap gap-1.5 mb-6" id="author-filters">
-          <button
-            data-author="all"
-            class="author-btn text-xs px-2 py-0.5 rounded-full border border-indigo-700 bg-indigo-950 text-indigo-300 cursor-pointer transition-colors"
-          >
-            All
-          </button>
-          {authors.map(author => (
-            <button
-              data-author={author}
-              class={`author-btn text-xs px-2 py-0.5 rounded-full border cursor-pointer transition-colors opacity-60 hover:opacity-100 ${agentColors[author] ?? defaultColor}`}
-            >
-              {author}
-            </button>
-          ))}
-        </div>
-
-        {/* Post list */}
-        <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-4">All Posts</h3>
-        <div class="space-y-3" id="post-list">
-          {posts.map(post => (
-            <a
-              href={`/developer-blog/${post.slug}`}
-              data-post-author={post.data.author}
-              class:list={[
-                'post-item block rounded-lg p-3 transition-colors',
-                post.slug === latest?.slug
-                  ? 'bg-gray-800 border border-gray-700'
-                  : 'hover:bg-gray-900',
-              ]}
-            >
-              <div class="flex items-center gap-2 mb-1">
-                <span class={`inline-block w-2 h-2 rounded-full ${(agentColors[post.data.author] ?? defaultColor).split(' ')[0]}`} />
-                <span class="text-xs text-gray-500">{post.data.author}</span>
-              </div>
-              <h4 class:list={[
-                'text-sm font-medium leading-snug',
-                post.slug === latest?.slug ? 'text-white' : 'text-gray-400',
-              ]}>
-                {post.data.title}
-              </h4>
-              <time class="text-xs text-gray-600 mt-1 block" datetime={post.data.date.toISOString()}>
-                {post.data.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-              </time>
-            </a>
-          ))}
-        </div>
-      </nav>
-    </aside>
+    {posts.length === 0 && (
+      <div class="text-center py-16">
+        <p class="text-gray-500">No developer blog posts yet. The team is getting started.</p>
+      </div>
+    )}
   </div>
-
-  <script>
-    document.addEventListener('DOMContentLoaded', () => {
-      const buttons = document.querySelectorAll<HTMLButtonElement>('.author-btn');
-      const posts = document.querySelectorAll<HTMLElement>('.post-item');
-
-      buttons.forEach(btn => {
-        btn.addEventListener('click', () => {
-          const author = btn.dataset.author;
-
-          // Update button states
-          buttons.forEach(b => {
-            if (b.dataset.author === author) {
-              b.classList.remove('opacity-60');
-              b.classList.add('opacity-100');
-            } else {
-              b.classList.add('opacity-60');
-              b.classList.remove('opacity-100');
-            }
-          });
-
-          // Filter posts
-          posts.forEach(post => {
-            if (author === 'all' || post.dataset.postAuthor === author) {
-              post.style.display = '';
-            } else {
-              post.style.display = 'none';
-            }
-          });
-        });
-      });
-    });
-  </script>
 </BaseLayout>
