@@ -49,6 +49,8 @@ export interface TenantContext {
   resolvedMcpEndpoints?: any[];
   /** Agent-level configuration (conversations, token limits, etc.). */
   agentConfig?: AgentConfig;
+  /** Loaded Provider entity (when resolved via gatewayProviderId). */
+  providerEntity?: any;
 }
 
 // Augment Fastify request type with tenant context and per-request EntityManager
