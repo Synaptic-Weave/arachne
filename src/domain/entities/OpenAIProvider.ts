@@ -1,4 +1,6 @@
 import { ProviderBase } from './ProviderBase.js';
+import type { BaseProvider } from '../../providers/base.js';
+import { OpenAIProvider as OpenAIProxyAdapter } from '../../providers/openai.js';
 
 export class OpenAIProvider extends ProviderBase {
   baseUrl!: string | null;
@@ -9,13 +11,12 @@ export class OpenAIProvider extends ProviderBase {
     }
   }
 
-  createClient(): any {
-    // TODO: Implement OpenAI client creation
-    // return new OpenAI({
-    //   apiKey: decrypt(this.apiKey),
-    //   baseURL: this.baseUrl ?? undefined,
-    // });
-    throw new Error('OpenAI client creation not yet implemented');
+  createClient(tenantId?: string): BaseProvider {
+    const apiKey = this.decryptApiKey(tenantId);
+    return new OpenAIProxyAdapter({
+      apiKey: apiKey || process.env.OPENAI_API_KEY || '',
+      baseUrl: this.baseUrl ?? undefined,
+    });
   }
 
   sanitizeForTenant(): Partial<OpenAIProvider> {

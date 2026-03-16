@@ -1,4 +1,6 @@
 import { ProviderBase } from './ProviderBase.js';
+import type { BaseProvider } from '../../providers/base.js';
+import { AzureProvider as AzureProxyAdapter } from '../../providers/azure.js';
 
 export class AzureProvider extends ProviderBase {
   baseUrl!: string | null;
@@ -17,15 +19,15 @@ export class AzureProvider extends ProviderBase {
     }
   }
 
-  createClient(): any {
-    // TODO: Implement Azure OpenAI client creation
-    // return new AzureOpenAI({
-    //   apiKey: decrypt(this.apiKey),
-    //   endpoint: this.baseUrl,
-    //   deployment: this.deployment,
-    //   apiVersion: this.apiVersion,
-    // });
-    throw new Error('Azure client creation not yet implemented');
+  createClient(tenantId?: string): BaseProvider {
+    const apiKey = this.decryptApiKey(tenantId);
+    return new AzureProxyAdapter({
+      apiKey: apiKey || '',
+      endpoint: this.baseUrl || '',
+      deployment: this.deployment || '',
+      apiVersion: this.apiVersion || '2024-02-01',
+      deploymentMap: {},
+    });
   }
 
   sanitizeForTenant(): Partial<AzureProvider> {
