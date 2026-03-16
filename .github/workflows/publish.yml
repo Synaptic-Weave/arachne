@@ -5,6 +5,10 @@ on:
     branches:
       - main
       - develop
+    paths-ignore:
+      - 'site/**'
+      - 'docs/**'
+      - '*.md'
 
 jobs:
   publish:
