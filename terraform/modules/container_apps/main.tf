@@ -151,6 +151,11 @@ resource "azurerm_container_app" "portal" {
       image  = var.portal_image
       cpu    = 0.25
       memory = "0.5Gi"
+
+      env {
+        name  = "GATEWAY_URL"
+        value = "https://${azurerm_container_app.gateway.ingress[0].fqdn}"
+      }
     }
   }
 

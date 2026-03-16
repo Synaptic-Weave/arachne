@@ -3,8 +3,8 @@
 # Deploys updated Container App images to Azure.
 #
 # Triggers:
-#   - Push to `dev` branch → auto-deploys to dev environment
-#   - workflow_dispatch    → manual deploy to dev or prod (prod is manual-only)
+#   - workflow_run: after Publish Docker Images completes on develop → auto-deploys to dev
+#   - workflow_dispatch: manual deploy to dev or prod (prod is manual-only)
 #
 # Required secrets:
 #   AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
@@ -12,9 +12,12 @@
 name: Deploy to Azure
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Publish Docker Images"]
+    types:
+      - completed
     branches:
-      - dev
+      - develop
   workflow_dispatch:
     inputs:
       environment:
@@ -38,8 +41,9 @@ jobs:
   deploy:
     name: Update Container App images
     runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     env:
-      DEPLOY_ENV: ${{ github.event_name == 'push' && 'dev' || inputs.environment }}
+      DEPLOY_ENV: ${{ github.event_name == 'workflow_run' && 'dev' || inputs.environment }}
 
     steps:
       - name: Resolve image coordinates
@@ -47,16 +51,27 @@ jobs:
         run: |
           SHA="${{ inputs.sha }}"
           if [[ -z "$SHA" ]]; then
-            SHA="${{ github.sha }}"
+            if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
+              SHA="${{ github.event.workflow_run.head_sha }}"
+            else
+              SHA="${{ github.sha }}"
+            fi
           fi
           OWNER="${{ inputs.owner }}"
           if [[ -z "$OWNER" ]]; then
             OWNER="${{ github.repository_owner }}"
           fi
           OWNER="${OWNER,,}"
+          # Dev images use develop- prefix; prod images use bare SHA
+          if [[ "${{ env.DEPLOY_ENV }}" == "dev" ]]; then
+            TAG="develop-${SHA}"
+          else
+            TAG="${SHA}"
+          fi
           echo "sha=$SHA" >> $GITHUB_OUTPUT
           echo "owner=$OWNER" >> $GITHUB_OUTPUT
-          echo "Deploying SHA: $SHA to ${{ env.DEPLOY_ENV }} (owner: $OWNER)"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "Deploying tag: $TAG to ${{ env.DEPLOY_ENV }} (owner: $OWNER)"
 
       - name: Azure login
         run: |
@@ -71,11 +86,11 @@ jobs:
           az containerapp update \
             --name ca-arachne-gateway-${{ env.DEPLOY_ENV }} \
             --resource-group rg-arachne-${{ env.DEPLOY_ENV }} \
-            --image ghcr.io/${{ steps.coords.outputs.owner }}/arachne-gateway:${{ steps.coords.outputs.sha }}
+            --image ghcr.io/${{ steps.coords.outputs.owner }}/arachne-gateway:${{ steps.coords.outputs.tag }}
 
       - name: Update portal image
         run: |
           az containerapp update \
             --name ca-arachne-portal-${{ env.DEPLOY_ENV }} \
             --resource-group rg-arachne-${{ env.DEPLOY_ENV }} \
-            --image ghcr.io/${{ steps.coords.outputs.owner }}/arachne-portal:${{ steps.coords.outputs.sha }}
+            --image ghcr.io/${{ steps.coords.outputs.owner }}/arachne-portal:${{ steps.coords.outputs.tag }}

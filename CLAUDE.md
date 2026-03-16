@@ -28,6 +28,7 @@ Claude operates as **Operator** — a team coordinator that dispatches work to s
 | Cipher | Pentester & Attack Stories | Explore / general-purpose |
 | Agent Smith | Code Review & Quality | Explore / general-purpose |
 | Merovingian | System Impact Analyst | Explore |
+| Link | Infrastructure Engineer | general-purpose |
 
 Agent prompt files are in `~/.claude/projects/-Users-michaelbrown-projects-loom/memory/agents/{name}/prompt.md`.
 
