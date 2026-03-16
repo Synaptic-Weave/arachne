@@ -1,6 +1,5 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { randomBytes, createHash } from 'node:crypto';
-import type { EntityManager } from '@mikro-orm/core';
 import { adminAuthMiddleware } from '../middleware/adminAuth.js';
 import { invalidateCachedKey, invalidateAllKeysForTenant } from '../auth.js';
 import { evictProvider } from '../providers/registry.js';
@@ -11,7 +10,6 @@ import { ProviderManagementService } from '../application/services/ProviderManag
 import { signJwt } from '../auth/jwtUtils.js';
 import type { CreateProviderDto, UpdateProviderDto } from '../application/dtos/provider.dto.js';
 import { SmokeTestRun } from '../domain/entities/SmokeTestRun.js';
-import { orm } from '../orm.js';
 
 const ADMIN_JWT_SECRET = process.env.ADMIN_JWT_SECRET ?? 'unsafe-dev-secret-change-in-production';
 
@@ -24,12 +22,13 @@ interface LoginBody {
  * Register admin routes
  * All routes except /v1/admin/auth/login require JWT authentication
  */
-export function registerAdminRoutes(fastify: FastifyInstance, adminService: AdminService, em: EntityManager): void {
+export function registerAdminRoutes(fastify: FastifyInstance): void {
 
   // POST /v1/admin/auth/login — Admin login endpoint
   fastify.post<{ Body: LoginBody }>(
     '/v1/admin/auth/login',
     async (request: FastifyRequest<{ Body: LoginBody }>, reply: FastifyReply) => {
+      const adminService = new AdminService(request.em);
       const { username, password } = request.body;
 
       if (!username || !password) {
@@ -67,6 +66,7 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
     '/v1/admin/auth/change-password',
     { preHandler: adminAuthMiddleware },
     async (request, reply) => {
+      const adminService = new AdminService(request.em);
       const { currentPassword, newPassword } = request.body;
 
       if (!newPassword || newPassword.length < 8) {
@@ -102,6 +102,7 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
     '/v1/admin/tenants',
     authOpts,
     async (request, reply) => {
+      const adminService = new AdminService(request.em);
       const { name } = request.body;
 
       if (!name || typeof name !== 'string' || name.trim().length === 0) {
@@ -117,6 +118,7 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
   fastify.get<{
     Querystring: { limit?: string; offset?: string; status?: string };
   }>('/v1/admin/tenants', authOpts, async (request, reply) => {
+    const adminService = new AdminService(request.em);
     const limit = Math.min(parseInt(request.query.limit ?? '50', 10), 200);
     const offset = parseInt(request.query.offset ?? '0', 10);
     const { status } = request.query;
@@ -130,6 +132,7 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
     '/v1/admin/tenants/:id',
     authOpts,
     async (request, reply) => {
+      const adminService = new AdminService(request.em);
       const { id } = request.params;
 
       const tenant = await adminService.getTenant(id);
@@ -168,6 +171,7 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
     Params: { id: string };
     Body: { name?: string; status?: string };
   }>('/v1/admin/tenants/:id', authOpts, async (request, reply) => {
+    const adminService = new AdminService(request.em);
     const { id } = request.params;
     const { name, status } = request.body;
 
@@ -187,7 +191,7 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
 
     // If status changed to inactive, invalidate cache and evict provider
     if (status === 'inactive') {
-      await invalidateAllKeysForTenant(id, em);
+      await invalidateAllKeysForTenant(id, request.em);
       evictProvider(id);
     }
 
@@ -199,6 +203,7 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
     '/v1/admin/tenants/:id',
     authOpts,
     async (request, reply) => {
+      const adminService = new AdminService(request.em);
       const { id } = request.params;
       const { confirm } = request.query;
 
@@ -207,7 +212,7 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
       }
 
       // Invalidate cache and evict provider before deletion
-      await invalidateAllKeysForTenant(id, em);
+      await invalidateAllKeysForTenant(id, request.em);
       evictProvider(id);
 
       const deleted = await adminService.deleteTenant(id);
@@ -231,6 +236,7 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
       apiVersion?: string;
     };
   }>('/v1/admin/tenants/:id/provider-config', authOpts, async (request, reply) => {
+    const adminService = new AdminService(request.em);
     const { id } = request.params;
     const { provider, apiKey, baseUrl, deployment, apiVersion } = request.body;
 
@@ -284,6 +290,7 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
     '/v1/admin/tenants/:id/provider-config',
     authOpts,
     async (request, reply) => {
+      const adminService = new AdminService(request.em);
       const { id } = request.params;
 
       const found = await adminService.clearProviderConfig(id);
@@ -303,6 +310,7 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
     '/v1/admin/tenants/:id/api-keys',
     authOpts,
     async (request, reply) => {
+      const adminService = new AdminService(request.em);
       const { id } = request.params;
       const { name } = request.body;
 
@@ -339,6 +347,7 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
     '/v1/admin/tenants/:id/api-keys',
     authOpts,
     async (request, reply) => {
+      const adminService = new AdminService(request.em);
       const { id } = request.params;
 
       const rows = await adminService.listApiKeys(id);
@@ -361,6 +370,7 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
     Params: { id: string; keyId: string };
     Querystring: { permanent?: string };
   }>('/v1/admin/tenants/:id/api-keys/:keyId', authOpts, async (request, reply) => {
+    const adminService = new AdminService(request.em);
     const { id, keyId } = request.params;
     const { permanent } = request.query;
 
@@ -395,6 +405,7 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
   fastify.get<{
     Querystring: { tenant_id?: string; limit?: string; cursor?: string };
   }>('/v1/admin/traces', authOpts, async (request, reply) => {
+    const adminService = new AdminService(request.em);
     const { tenant_id, cursor } = request.query;
     const limit = Math.min(parseInt(request.query.limit ?? '50', 10), 200);
 
@@ -442,6 +453,7 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
 
   // GET /v1/admin/beta/signups — List all beta signups
   fastify.get('/v1/admin/beta/signups', authOpts, async (request, reply) => {
+    const adminService = new AdminService(request.em);
     const signups = await adminService.listBetaSignups();
     return reply.send({ signups });
   });
@@ -451,6 +463,7 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
     '/v1/admin/beta/approve/:id',
     authOpts,
     async (request, reply) => {
+      const adminService = new AdminService(request.em);
       const { id } = request.params;
       const adminId = request.adminUser?.sub;
 
@@ -470,6 +483,7 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
 
   // GET /v1/admin/settings — Get current settings
   fastify.get('/v1/admin/settings', authOpts, async (request, reply) => {
+    const adminService = new AdminService(request.em);
     const settings = await adminService.getSettings();
     return reply.send(settings);
   });
@@ -487,6 +501,7 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
     '/v1/admin/settings',
     authOpts,
     async (request, reply) => {
+      const adminService = new AdminService(request.em);
       const adminId = request.adminUser?.sub;
 
       if (!adminId) {
@@ -501,7 +516,7 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
 
       // Validate referenced provider exists
       if (defaultEmbedderProviderId !== undefined && defaultEmbedderProviderId !== null) {
-        const providerSvc = new ProviderManagementService(em.fork());
+        const providerSvc = new ProviderManagementService(request.em);
         try {
           await providerSvc.getGatewayProvider(defaultEmbedderProviderId);
         } catch {
@@ -519,10 +534,9 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
 
   // ===== Provider Management Routes =====
 
-  const providerService = new ProviderManagementService(em.fork());
-
   // GET /v1/admin/providers — List all gateway providers
   fastify.get('/v1/admin/providers', authOpts, async (request, reply) => {
+    const providerService = new ProviderManagementService(request.em);
     const providers = await providerService.listGatewayProviders();
     return reply.send(providers);
   });
@@ -532,6 +546,7 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
     '/v1/admin/providers/:id',
     authOpts,
     async (request, reply) => {
+      const providerService = new ProviderManagementService(request.em);
       try {
         const provider = await providerService.getGatewayProvider(request.params.id);
         return reply.send(provider);
@@ -549,6 +564,7 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
     '/v1/admin/providers',
     authOpts,
     async (request, reply) => {
+      const providerService = new ProviderManagementService(request.em);
       try {
         const provider = await providerService.createGatewayProvider(request.body);
         return reply.code(201).send(provider);
@@ -566,6 +582,7 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
     '/v1/admin/providers/:id',
     authOpts,
     async (request, reply) => {
+      const providerService = new ProviderManagementService(request.em);
       try {
         const provider = await providerService.updateGatewayProvider(
           request.params.id,
@@ -589,6 +606,7 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
     '/v1/admin/providers/:id',
     authOpts,
     async (request, reply) => {
+      const providerService = new ProviderManagementService(request.em);
       try {
         await providerService.deleteGatewayProvider(request.params.id);
         return reply.code(204).send();
@@ -609,6 +627,7 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
     '/v1/admin/providers/:id/default',
     authOpts,
     async (request, reply) => {
+      const providerService = new ProviderManagementService(request.em);
       try {
         const provider = await providerService.setGatewayDefault(request.params.id);
         return reply.send(provider);
@@ -628,6 +647,7 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
     '/v1/admin/providers/:id/availability',
     authOpts,
     async (request, reply) => {
+      const providerService = new ProviderManagementService(request.em);
       try {
         const provider = await providerService.updateTenantAvailability(
           request.params.id,
@@ -648,6 +668,7 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
     '/v1/admin/providers/:id/tenants',
     authOpts,
     async (request, reply) => {
+      const providerService = new ProviderManagementService(request.em);
       try {
         const tenants = await providerService.listProviderTenantAccess(request.params.id);
         return reply.send({ tenants });
@@ -665,6 +686,7 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
     '/v1/admin/providers/:id/tenants',
     authOpts,
     async (request, reply) => {
+      const providerService = new ProviderManagementService(request.em);
       try {
         await providerService.grantTenantAccess(request.params.id, request.body.tenantId);
         return reply.code(201).send({ message: 'Access granted' });
@@ -685,6 +707,7 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
     '/v1/admin/providers/:id/tenants/:tenantId',
     authOpts,
     async (request, reply) => {
+      const providerService = new ProviderManagementService(request.em);
       try {
         await providerService.revokeTenantAccess(request.params.id, request.params.tenantId);
         return reply.code(204).send();
@@ -706,8 +729,7 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
     Querystring: { limit?: string };
   }>('/v1/admin/smoke-tests', authOpts, async (request, reply) => {
     const limit = Math.min(parseInt(request.query.limit ?? '20', 10), 100);
-    const smokeEm = orm.em.fork();
-    const runs = await smokeEm.find(
+    const runs = await request.em.find(
       SmokeTestRun,
       {},
       { orderBy: { startedAt: 'DESC' }, limit }
@@ -720,8 +742,7 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
     '/v1/admin/smoke-tests/:id',
     authOpts,
     async (request, reply) => {
-      const smokeEm = orm.em.fork();
-      const run = await smokeEm.findOne(SmokeTestRun, { id: request.params.id });
+      const run = await request.em.findOne(SmokeTestRun, { id: request.params.id });
       if (!run) {
         return reply.code(404).send({ error: 'Smoke test run not found' });
       }
@@ -746,4 +767,3 @@ export function registerAdminRoutes(fastify: FastifyInstance, adminService: Admi
     }
   });
 }
-

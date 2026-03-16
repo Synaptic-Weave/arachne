@@ -76,13 +76,20 @@ vi.mock('../src/services/RegistryService.js', () => ({
   RegistryService: vi.fn(() => mockRegistryServiceInstance),
 }));
 
+// Mock per-request service constructors (routes now instantiate per-request)
+vi.mock('../src/application/services/PortalService.js', () => ({
+  PortalService: vi.fn().mockImplementation(() => ({})),
+}));
+vi.mock('../src/application/services/UserManagementService.js', () => ({
+  UserManagementService: vi.fn().mockImplementation(() => ({})),
+}));
+vi.mock('../src/application/services/TenantManagementService.js', () => ({
+  TenantManagementService: vi.fn().mockImplementation(() => ({})),
+}));
+
 // ── Now import the route registrar (after mocks are set up) ──────────────────
 
 import { registerPortalRoutes } from '../src/routes/portal.js';
-import { PortalService } from '../src/application/services/PortalService.js';
-import { ConversationManagementService } from '../src/application/services/ConversationManagementService.js';
-import { UserManagementService } from '../src/application/services/UserManagementService.js';
-import { TenantManagementService } from '../src/application/services/TenantManagementService.js';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -96,30 +103,14 @@ function authToken(userId = TEST_USER_ID, tenantId = TEST_TENANT_ID, role = 'own
   return signJwt({ sub: userId, tenantId, role }, PORTAL_JWT_SECRET, 86_400_000);
 }
 
-// ── Minimal service stubs (portal routes need these injected) ────────────────
-
-function buildStubPortalSvc(): PortalService {
-  return {} as unknown as PortalService;
-}
-function buildStubConvSvc(): ConversationManagementService {
-  return {} as unknown as ConversationManagementService;
-}
-function buildStubUserMgmtSvc(): UserManagementService {
-  return {} as unknown as UserManagementService;
-}
-function buildStubTenantMgmtSvc(): TenantManagementService {
-  return {} as unknown as TenantManagementService;
-}
-
 async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
-  registerPortalRoutes(
-    app,
-    buildStubPortalSvc(),
-    buildStubConvSvc(),
-    buildStubUserMgmtSvc(),
-    buildStubTenantMgmtSvc(),
-  );
+  // Per-request EM forking (simulated for tests)
+  app.decorateRequest('em', null as any);
+  app.addHook('onRequest', async (request) => {
+    request.em = mockEm as any;
+  });
+  registerPortalRoutes(app);
   await app.ready();
   return app;
 }

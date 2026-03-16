@@ -37,10 +37,25 @@ function buildMockDashboardSvc(overrides: Partial<Record<keyof DashboardService,
   } as unknown as DashboardService;
 }
 
+// ── Mock DashboardService constructor ──────────────────────────────────────
+
+let _mockDashboardSvc: DashboardService;
+
+vi.mock('../src/application/services/DashboardService.js', () => ({
+  DashboardService: vi.fn().mockImplementation(() => _mockDashboardSvc),
+}));
+
 // ── App factory ───────────────────────────────────────────────────────────
 
 async function buildApp(svc: DashboardService = buildMockDashboardSvc()): Promise<FastifyInstance> {
+  _mockDashboardSvc = svc;
   const app = Fastify({ logger: false });
+
+  // Per-request EM (simulated for tests)
+  app.decorateRequest('em', null as any);
+  app.addHook('onRequest', async (request) => {
+    request.em = {} as any;
+  });
 
   // Inject a synthetic tenant context — bypasses the real API-key auth middleware
   app.addHook('preHandler', async (request) => {
@@ -50,7 +65,7 @@ async function buildApp(svc: DashboardService = buildMockDashboardSvc()): Promis
     };
   });
 
-  await registerDashboardRoutes(app, svc);
+  await registerDashboardRoutes(app);
   await app.ready();
   return app;
 }
@@ -68,7 +83,7 @@ describe('GET /v1/traces', () => {
 
   afterEach(async () => {
     await app.close();
-    vi.resetAllMocks();
+    vi.clearAllMocks();
   });
 
   it('returns traces with default limit (50) and no cursor', async () => {
@@ -139,7 +154,7 @@ describe('GET /v1/analytics/summary', () => {
 
   afterEach(async () => {
     await app.close();
-    vi.resetAllMocks();
+    vi.clearAllMocks();
   });
 
   it('returns analytics summary with default window (24h)', async () => {
@@ -179,7 +194,7 @@ describe('GET /v1/analytics/timeseries', () => {
 
   afterEach(async () => {
     await app.close();
-    vi.resetAllMocks();
+    vi.clearAllMocks();
   });
 
   it('returns timeseries data with default params (window=24, bucket=60)', async () => {

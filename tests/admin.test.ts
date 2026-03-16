@@ -210,10 +210,27 @@ function buildMockEm(options: { apiKeys?: Map<string, any>; tenants?: Map<string
   return mockEm;
 }
 
+// Global mock admin service instance — set by buildApp, returned by mocked AdminService constructor
+let _mockAdminSvc: AdminService;
+
+vi.mock('../src/application/services/AdminService.js', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('../src/application/services/AdminService.js')>();
+  return {
+    ...mod,
+    AdminService: vi.fn().mockImplementation(() => _mockAdminSvc),
+  };
+});
+
 async function buildApp(adminService: AdminService, mockEm: EntityManager): Promise<FastifyInstance> {
+  _mockAdminSvc = adminService;
   const app = Fastify({ logger: false });
-  registerAuthMiddleware(app, mockEm);
-  registerAdminRoutes(app, adminService, mockEm);
+  // Per-request EM forking (simulated for tests)
+  app.decorateRequest('em', null as any);
+  app.addHook('onRequest', async (request) => {
+    request.em = mockEm;
+  });
+  registerAuthMiddleware(app);
+  registerAdminRoutes(app);
   app.post('/v1/chat/completions', async (request, reply) => {
     return reply.send({ tenant: request.tenant });
   });

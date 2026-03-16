@@ -12,11 +12,6 @@ import { traceRecorder } from './tracing.js';
 import { getProviderForTenant } from './providers/registry.js';
 import { applyAgentToRequest, handleMcpRoundTrip, injectRagContext } from './agent.js';
 import { ConversationManagementService } from './application/services/ConversationManagementService.js';
-import { PortalService } from './application/services/PortalService.js';
-import { AdminService } from './application/services/AdminService.js';
-import { UserManagementService } from './application/services/UserManagementService.js';
-import { TenantManagementService } from './application/services/TenantManagementService.js';
-import { DashboardService } from './application/services/DashboardService.js';
 import { randomUUID } from 'node:crypto';
 import { registerDashboardRoutes } from './routes/dashboard.js';
 import { registerAdminRoutes } from './routes/admin.js';
@@ -45,7 +40,6 @@ const __dirname = dirname(__filename);
 const start = async () => {
   try {
     const orm = await initOrm();
-    const em = orm.em.fork();
 
     // Bootstrap system-embedder agent for all tenants if configured
     if (process.env.SYSTEM_EMBEDDER_PROVIDER && process.env.SYSTEM_EMBEDDER_MODEL) {
@@ -58,16 +52,18 @@ const start = async () => {
       logger: true
     });
 
-    traceRecorder.init(em);
+    // Per-request EntityManager forking
+    fastify.decorateRequest('em', null as any);
+    fastify.addHook('onRequest', async (request) => {
+      request.em = orm.em.fork();
+    });
+    fastify.addHook('onResponse', async (request) => {
+      request.em?.clear();
+    });
 
-    const conversationSvc = new ConversationManagementService(em);
-    const portalSvc = new PortalService(em);
-    const adminSvc = new AdminService(em);
-    const dashboardSvc = new DashboardService(em);
-    const userMgmtSvc = new UserManagementService(em);
-    const tenantMgmtSvc = new TenantManagementService(em);
+    traceRecorder.init(orm.em);
 
-    registerAuthMiddleware(fastify, em);
+    registerAuthMiddleware(fastify);
 
     // Allow requests from file:// origins and any localhost port (dev chat app, dashboard)
     fastify.register(fastifyCors, { origin: true });
@@ -112,24 +108,24 @@ const start = async () => {
 
     // Register dashboard API routes (/v1/traces, /v1/analytics/*)
     fastify.register((instance, opts, done) => {
-      registerDashboardRoutes(instance, dashboardSvc).then(() => done()).catch(done);
+      registerDashboardRoutes(instance).then(() => done()).catch(done);
     });
 
     // Register admin routes (/v1/admin/*)
     fastify.register((instance, opts, done) => {
-      registerAdminRoutes(instance, adminSvc, em);
+      registerAdminRoutes(instance);
       done();
     });
 
     // Register portal routes (/v1/portal/*)
     fastify.register((instance, opts, done) => {
-      registerPortalRoutes(instance, portalSvc, conversationSvc, userMgmtSvc, tenantMgmtSvc);
+      registerPortalRoutes(instance);
       done();
     });
 
     // Register registry routes (/v1/registry/*)
     fastify.register((instance, opts, done) => {
-      registerRegistryRoutes(instance, orm);
+      registerRegistryRoutes(instance);
       done();
     });
 
@@ -140,6 +136,7 @@ const start = async () => {
     });
 
     fastify.post('/v1/chat/completions', async (request, reply) => {
+      const conversationSvc = new ConversationManagementService(request.em);
       const tenant = request.tenant;
       if (!tenant && !process.env.OPENAI_API_KEY) {
         return reply.code(500).send({
@@ -248,7 +245,7 @@ const start = async () => {
       let ragResult = {};
       let bodyWithRag = bodyWithHistory;
       if (tenant?.knowledgeBaseRef) {
-        const ragOutput = await injectRagContext(bodyWithHistory, tenant, em);
+        const ragOutput = await injectRagContext(bodyWithHistory, tenant, request.em);
         bodyWithRag = ragOutput.body;
         ragResult = ragOutput.ragResult;
       }
@@ -375,7 +372,9 @@ const start = async () => {
             fallbackToNoRag: r.fallbackToNoRag,
           });
 
-          // Store conversation messages (fire-and-forget; do not block the response)
+          // Store conversation messages (fire-and-forget; do not block the response).
+          // Use a background EM forked from orm.em (not request.em) because the
+          // onResponse hook will clear request.em before this async write completes.
           if (conversationUUID) {
             const userMessages = (rawBody.messages ?? []).filter((m: any) => m.role === 'user');
             const userContent = userMessages
@@ -385,7 +384,8 @@ const start = async () => {
               .join('\n');
             const assistantContent =
               (finalBody as any)?.choices?.[0]?.message?.content ?? '';
-            conversationSvc
+            const bgConversationSvc = new ConversationManagementService(orm.em.fork());
+            bgConversationSvc
               .storeMessages(
                 tenant.tenantId,
                 conversationUUID,

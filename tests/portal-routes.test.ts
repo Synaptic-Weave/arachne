@@ -46,6 +46,21 @@ import { ConversationManagementService } from '../src/application/services/Conve
 import { UserManagementService } from '../src/application/services/UserManagementService.js';
 import { TenantManagementService } from '../src/application/services/TenantManagementService.js';
 
+// Mock service constructors for per-request instantiation
+let _mockPortalSvc: PortalService;
+let _mockUserMgmtSvc: UserManagementService;
+let _mockTenantMgmtSvc: TenantManagementService;
+
+vi.mock('../src/application/services/PortalService.js', () => ({
+  PortalService: vi.fn().mockImplementation(() => _mockPortalSvc),
+}));
+vi.mock('../src/application/services/UserManagementService.js', () => ({
+  UserManagementService: vi.fn().mockImplementation(() => _mockUserMgmtSvc),
+}));
+vi.mock('../src/application/services/TenantManagementService.js', () => ({
+  TenantManagementService: vi.fn().mockImplementation(() => _mockTenantMgmtSvc),
+}));
+
 function buildMockConvSvc(): ConversationManagementService {
   return {
     getOrCreatePartition: vi.fn().mockResolvedValue({ id: 'part-uuid' }),
@@ -263,8 +278,16 @@ async function buildApp(
   userMgmtSvc: UserManagementService = buildMockUserMgmtSvc(),
   tenantMgmtSvc: TenantManagementService = buildMockTenantMgmtSvc(),
 ): Promise<FastifyInstance> {
+  _mockPortalSvc = svc;
+  _mockUserMgmtSvc = userMgmtSvc;
+  _mockTenantMgmtSvc = tenantMgmtSvc;
   const app = Fastify({ logger: false });
-  registerPortalRoutes(app, svc, conversationSvc, userMgmtSvc, tenantMgmtSvc);
+  // Per-request EM forking (simulated for tests)
+  app.decorateRequest('em', null as any);
+  app.addHook('onRequest', async (request) => {
+    request.em = {} as any;
+  });
+  registerPortalRoutes(app);
   await app.ready();
   return app;
 }

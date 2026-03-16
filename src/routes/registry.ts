@@ -4,14 +4,13 @@ import multipart from '@fastify/multipart';
 import { registryAuth } from '../middleware/registryAuth.js';
 import { RegistryService } from '../services/RegistryService.js';
 import { ProvisionService } from '../services/ProvisionService.js';
-import type { MikroORM } from '@mikro-orm/core';
 
 const REGISTRY_JWT_SECRET =
   process.env.REGISTRY_JWT_SECRET ??
   process.env.PORTAL_JWT_SECRET ??
   'unsafe-registry-secret-change-in-production';
 
-export function registerRegistryRoutes(fastify: FastifyInstance, orm: MikroORM): void {
+export function registerRegistryRoutes(fastify: FastifyInstance): void {
   fastify.register(multipart);
 
   const registryService = new RegistryService();
@@ -60,7 +59,7 @@ export function registerRegistryRoutes(fastify: FastifyInstance, orm: MikroORM):
     }
 
     const registryUser = (request as any).registryUser;
-    const em = orm.em.fork();
+    const em = request.em;
 
     const result = await registryService.push(
       {
@@ -85,7 +84,7 @@ export function registerRegistryRoutes(fastify: FastifyInstance, orm: MikroORM):
   }, async (request, reply) => {
     const registryUser = (request as any).registryUser;
     const org = (request.query as any).org ?? registryUser.orgSlug;
-    const em = orm.em.fork();
+    const em = request.em;
 
     const artifacts = await registryService.list(registryUser.tenantId, org, em);
     return reply.send(artifacts);
@@ -98,7 +97,7 @@ export function registerRegistryRoutes(fastify: FastifyInstance, orm: MikroORM):
     async (request, reply) => {
       const registryUser = (request as any).registryUser;
       const { org, name, tag } = request.params;
-      const em = orm.em.fork();
+      const em = request.em;
 
       const buffer = await registryService.pull({ org, name, tag }, registryUser.tenantId, em);
 
@@ -120,7 +119,7 @@ export function registerRegistryRoutes(fastify: FastifyInstance, orm: MikroORM):
     async (request, reply) => {
       const registryUser = (request as any).registryUser;
       const { org, name, tag } = request.params;
-      const em = orm.em.fork();
+      const em = request.em;
 
       const deleted = await registryService.delete({ org, name, tag }, registryUser.tenantId, em);
 
@@ -143,7 +142,7 @@ export function registerRegistryRoutes(fastify: FastifyInstance, orm: MikroORM):
     const { org, name, tag } = request.params;
     const { environment } = request.query;
 
-    const em = orm.em.fork();
+    const em = request.em;
 
     const result = await provisionService.deploy(
       {
@@ -163,7 +162,7 @@ export function registerRegistryRoutes(fastify: FastifyInstance, orm: MikroORM):
     preHandler: registryAuth('artifact:read', REGISTRY_JWT_SECRET),
   }, async (request, reply) => {
     const registryUser = (request as any).registryUser;
-    const em = orm.em.fork();
+    const em = request.em;
 
     const deployments = await provisionService.listDeployments(registryUser.tenantId, em);
     return reply.send(deployments);
@@ -176,7 +175,7 @@ export function registerRegistryRoutes(fastify: FastifyInstance, orm: MikroORM):
     async (request, reply) => {
       const registryUser = (request as any).registryUser;
       const { id } = request.params;
-      const em = orm.em.fork();
+      const em = request.em;
 
       const success = await provisionService.unprovision(id, registryUser.tenantId, em);
 

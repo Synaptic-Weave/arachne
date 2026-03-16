@@ -85,7 +85,12 @@ function buildMockEm(options: { inactiveTenantHash?: string } = {}): EntityManag
  */
 async function buildApp(em: EntityManager): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
-  registerAuthMiddleware(app, em);
+  // Per-request EM forking (simulated for tests)
+  app.decorateRequest('em', null as any);
+  app.addHook('onRequest', async (request) => {
+    request.em = em;
+  });
+  registerAuthMiddleware(app);
 
   app.post('/v1/chat/completions', async (req) => {
     return { tenant: req.tenant };

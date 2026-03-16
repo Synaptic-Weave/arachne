@@ -1,12 +1,12 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import type { DashboardService } from '../application/services/DashboardService.js';
+import { DashboardService } from '../application/services/DashboardService.js';
 
 /**
  * Register dashboard REST endpoints on the given Fastify instance.
  * All routes rely on the global authMiddleware (registered in src/index.ts)
  * to populate request.tenant before these handlers run.
  */
-export async function registerDashboardRoutes(fastify: FastifyInstance, svc: DashboardService): Promise<void> {
+export async function registerDashboardRoutes(fastify: FastifyInstance): Promise<void> {
   /**
    * GET /v1/traces?limit=50&cursor={created_at_ISO}
    *
@@ -20,6 +20,7 @@ export async function registerDashboardRoutes(fastify: FastifyInstance, svc: Das
    * NOTE: encrypted request/response bodies are intentionally excluded.
    */
   fastify.get('/v1/traces', async (request: FastifyRequest, reply: FastifyReply) => {
+    const svc = new DashboardService(request.em);
     const tenant = request.tenant!;
     const qs = request.query as Record<string, string>;
     const limit = Math.min(parseInt(qs.limit ?? '50', 10), 200);
@@ -34,6 +35,7 @@ export async function registerDashboardRoutes(fastify: FastifyInstance, svc: Das
    * Returns aggregated metrics for the tenant over the given hour window.
    */
   fastify.get('/v1/analytics/summary', async (request: FastifyRequest, reply: FastifyReply) => {
+    const svc = new DashboardService(request.em);
     const tenant = request.tenant!;
     const qs = request.query as Record<string, string>;
     const windowHours = parseInt(qs.window ?? '24', 10);
@@ -47,6 +49,7 @@ export async function registerDashboardRoutes(fastify: FastifyInstance, svc: Das
    * Returns time-bucketed metrics for the tenant.
    */
   fastify.get('/v1/analytics/timeseries', async (request: FastifyRequest, reply: FastifyReply) => {
+    const svc = new DashboardService(request.em);
     const tenant = request.tenant!;
     const qs = request.query as Record<string, string>;
     const windowHours  = parseInt(qs.window ?? '24', 10);

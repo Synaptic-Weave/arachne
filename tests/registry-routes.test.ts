@@ -58,13 +58,14 @@ const deployToken = makeToken(['deploy:write']);
 
 // ── Test app builder ─────────────────────────────────────────────────────────
 
-function mockOrm() {
-  return { em: { fork: vi.fn().mockReturnValue({}) } } as any;
-}
-
 async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
-  registerRegistryRoutes(app, mockOrm());
+  // Per-request EM forking (simulated for tests)
+  app.decorateRequest('em', null as any);
+  app.addHook('onRequest', async (request) => {
+    request.em = {} as any;
+  });
+  registerRegistryRoutes(app);
   await app.ready();
   return app;
 }

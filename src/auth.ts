@@ -51,10 +51,11 @@ export interface TenantContext {
   agentConfig?: AgentConfig;
 }
 
-// Augment Fastify request type with tenant context
+// Augment Fastify request type with tenant context and per-request EntityManager
 declare module 'fastify' {
   interface FastifyRequest {
     tenant?: TenantContext;
+    em: EntityManager;
   }
 }
 
@@ -103,7 +104,7 @@ function hashApiKey(rawKey: string): string {
  * - Attaches the resolved TenantContext to request.tenant for downstream handlers
  * - Skips auth for /health and /dashboard/* routes
  */
-export function registerAuthMiddleware(fastify: FastifyInstance, em: EntityManager): void {
+export function registerAuthMiddleware(fastify: FastifyInstance): void {
   fastify.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
     // Public routes — no auth required
     // Skip tenant API key auth for /v1/admin routes (they use JWT auth)
@@ -140,7 +141,7 @@ export function registerAuthMiddleware(fastify: FastifyInstance, em: EntityManag
     if (!tenant) {
       let found: TenantContext | null = null;
       try {
-        const tenantService = new TenantService(em);
+        const tenantService = new TenantService(request.em);
         found = await tenantService.loadByApiKey(rawKey);
       } catch {
         // invalid key or inactive tenant

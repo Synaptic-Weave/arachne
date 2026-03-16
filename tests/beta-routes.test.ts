@@ -10,24 +10,32 @@ import Fastify from 'fastify';
 import type { FastifyInstance } from 'fastify';
 import { UniqueConstraintViolationException } from '@mikro-orm/core';
 
-const { mockPersistAndFlush, mockFindOne, mockFork } = vi.hoisted(() => {
+const { mockPersistAndFlush, mockFindOne, mockEm } = vi.hoisted(() => {
   const mockPersistAndFlush = vi.fn();
   const mockFindOne = vi.fn();
-  const mockFork = vi.fn(() => ({
+  const mockEm = {
     persistAndFlush: mockPersistAndFlush,
-    findOne: mockFindOne
-  }));
-  return { mockPersistAndFlush, mockFindOne, mockFork };
+    findOne: mockFindOne,
+  };
+  return { mockPersistAndFlush, mockFindOne, mockEm };
 });
 
-vi.mock('../src/orm.js', () => ({
-  orm: { em: { fork: mockFork } },
+// Mock AdminService for signups-enabled endpoint
+vi.mock('../src/application/services/AdminService.js', () => ({
+  AdminService: vi.fn().mockImplementation(() => ({
+    getSettings: vi.fn().mockResolvedValue({ signupsEnabled: true }),
+  })),
 }));
 
 import { registerBetaRoutes } from '../src/routes/beta.js';
 
 async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
+  // Per-request EM forking (simulated for tests)
+  app.decorateRequest('em', null as any);
+  app.addHook('onRequest', async (request) => {
+    request.em = mockEm as any;
+  });
   registerBetaRoutes(app);
   await app.ready();
   return app;

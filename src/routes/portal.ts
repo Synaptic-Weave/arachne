@@ -9,7 +9,6 @@ import { evictProvider } from '../providers/registry.js';
 import { applyAgentToRequest } from '../agent.js';
 import { getAnalyticsSummary, getTimeseriesMetrics, getModelBreakdown } from '../analytics.js';
 import { PortalService } from '../application/services/PortalService.js';
-import { ConversationManagementService } from '../application/services/ConversationManagementService.js';
 import { UserManagementService } from '../application/services/UserManagementService.js';
 import { TenantManagementService } from '../application/services/TenantManagementService.js';
 import { isSignupsEnabled } from '../config.js';
@@ -18,14 +17,9 @@ import { RegistryService } from '../services/RegistryService.js';
 import { ProvisionService } from '../services/ProvisionService.js';
 import { WeaveService } from '../services/WeaveService.js';
 import { EmbeddingAgentService } from '../services/EmbeddingAgentService.js';
-import { orm } from '../orm.js';
 
 export function registerPortalRoutes(
   fastify: FastifyInstance,
-  svc: PortalService,
-  conversationSvc: ConversationManagementService,
-  userMgmtSvc: UserManagementService,
-  tenantMgmtSvc: TenantManagementService
 ): void {
   fastify.register(multipart, { limits: { fileSize: 50 * 1024 * 1024 } });
 
@@ -102,6 +96,7 @@ export function registerPortalRoutes(
   fastify.post<{
     Body: { tenantName?: string; email: string; password: string; inviteToken?: string };
   }>('/v1/portal/auth/signup', async (request, reply) => {
+    const userMgmtSvc = new UserManagementService(request.em);
     const { tenantName, email, password, inviteToken } = request.body;
 
     if (!email || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -154,6 +149,7 @@ export function registerPortalRoutes(
   fastify.post<{
     Body: { email: string; password: string };
   }>('/v1/portal/auth/login', async (request, reply) => {
+    const userMgmtSvc = new UserManagementService(request.em);
     const { email, password } = request.body;
 
     if (!email || !password) {
@@ -180,6 +176,7 @@ export function registerPortalRoutes(
 
   // ── GET /v1/portal/me ─────────────────────────────────────────────────────
   fastify.get('/v1/portal/me', { preHandler: authRequired }, async (request, reply) => {
+    const svc = new PortalService(request.em);
     const { userId, tenantId } = request.portalUser!;
 
     const data = await svc.getMe(userId, tenantId);
@@ -227,6 +224,7 @@ export function registerPortalRoutes(
       orgSlug?: string;
     };
   }>('/v1/portal/settings', { preHandler: ownerRequired }, async (request, reply) => {
+    const tenantMgmtSvc = new TenantManagementService(request.em);
     const { tenantId } = request.portalUser!;
     const { name, provider, apiKey, baseUrl, deployment, apiVersion, availableModels, orgSlug } = request.body;
 
@@ -295,6 +293,7 @@ export function registerPortalRoutes(
 
   // ── GET /v1/portal/api-keys ───────────────────────────────────────────────
   fastify.get('/v1/portal/api-keys', { preHandler: authRequired }, async (request, reply) => {
+    const tenantMgmtSvc = new TenantManagementService(request.em);
     const { tenantId } = request.portalUser!;
     const rows = await tenantMgmtSvc.listApiKeys(tenantId);
     return reply.send({
@@ -315,6 +314,7 @@ export function registerPortalRoutes(
     '/v1/portal/api-keys',
     { preHandler: ownerRequired },
     async (request, reply) => {
+      const tenantMgmtSvc = new TenantManagementService(request.em);
       const { tenantId } = request.portalUser!;
       const { name, agentId } = request.body;
 
@@ -346,6 +346,7 @@ export function registerPortalRoutes(
     '/v1/portal/api-keys/:id',
     { preHandler: ownerRequired },
     async (request, reply) => {
+      const tenantMgmtSvc = new TenantManagementService(request.em);
       const { tenantId } = request.portalUser!;
       const { id: keyId } = request.params;
 
@@ -361,6 +362,7 @@ export function registerPortalRoutes(
 
   // ── GET /v1/portal/traces ─────────────────────────────────────────────────
   fastify.get('/v1/portal/traces', { preHandler: authRequired }, async (request, reply) => {
+    const svc = new PortalService(request.em);
     const { tenantId } = request.portalUser!;
     const qs = request.query as Record<string, string>;
     const limit = Math.min(parseInt(qs.limit ?? '50', 10), 200);
@@ -418,6 +420,7 @@ export function registerPortalRoutes(
         return reply.code(400).send({ error: 'tenantId is required' });
       }
 
+      const userMgmtSvc = new UserManagementService(request.em);
       try {
         const result = await userMgmtSvc.switchTenant(userId, newTenantId);
         return reply.send({
@@ -443,6 +446,7 @@ export function registerPortalRoutes(
     async (request, reply) => {
       const { token } = request.params;
 
+      const svc = new PortalService(request.em);
       const row = await svc.getInviteInfo(token);
       if (!row) {
         return reply.code(404).send({ error: 'Invite not found' });
@@ -471,6 +475,7 @@ export function registerPortalRoutes(
       const { tenantId, userId } = request.portalUser!;
       const { maxUses, expiresInHours = 168 } = request.body;
 
+      const tenantMgmtSvc = new TenantManagementService(request.em);
       const invite = await tenantMgmtSvc.inviteUser(tenantId, userId, {
         maxUses,
         expiresInDays: expiresInHours / 24,
@@ -489,6 +494,7 @@ export function registerPortalRoutes(
 
   // ── GET /v1/portal/invites ────────────────────────────────────────────────
   fastify.get('/v1/portal/invites', { preHandler: ownerRequired }, async (request, reply) => {
+    const tenantMgmtSvc = new TenantManagementService(request.em);
     const { tenantId } = request.portalUser!;
     const invites = await tenantMgmtSvc.listInvites(tenantId);
     const now = new Date();
@@ -521,6 +527,7 @@ export function registerPortalRoutes(
       const { id } = request.params;
 
       try {
+        const tenantMgmtSvc = new TenantManagementService(request.em);
         await tenantMgmtSvc.revokeInvite(tenantId, id);
         return reply.code(204).send();
       } catch {
@@ -531,6 +538,7 @@ export function registerPortalRoutes(
 
   // ── GET /v1/portal/members ────────────────────────────────────────────────
   fastify.get('/v1/portal/members', { preHandler: authRequired }, async (request, reply) => {
+    const tenantMgmtSvc = new TenantManagementService(request.em);
     const { tenantId } = request.portalUser!;
     const members = await tenantMgmtSvc.listMembers(tenantId);
 
@@ -557,6 +565,7 @@ export function registerPortalRoutes(
         return reply.code(400).send({ error: 'Role must be "owner" or "member"' });
       }
 
+      const tenantMgmtSvc = new TenantManagementService(request.em);
       try {
         await tenantMgmtSvc.updateMemberRole(tenantId, targetUserId, role);
         // Re-fetch to get updated data for response
@@ -587,6 +596,7 @@ export function registerPortalRoutes(
       const { userId: targetUserId } = request.params;
 
       try {
+        const tenantMgmtSvc = new TenantManagementService(request.em);
         await tenantMgmtSvc.removeMember(tenantId, targetUserId, requestingUserId);
         return reply.code(204).send();
       } catch (err: any) {
@@ -599,6 +609,7 @@ export function registerPortalRoutes(
   // ── GET /v1/portal/tenants ────────────────────────────────────────────────
   fastify.get('/v1/portal/tenants', { preHandler: authRequired }, async (request, reply) => {
     const { userId } = request.portalUser!;
+    const svc = new PortalService(request.em);
     const rows = await svc.listUserTenants(userId);
 
     return reply.send({
@@ -620,6 +631,7 @@ export function registerPortalRoutes(
       const { tenantId: targetTenantId } = request.params;
 
       try {
+        const userMgmtSvc = new UserManagementService(request.em);
         await userMgmtSvc.leaveTenant(userId, targetTenantId, currentTenantId);
         return reply.code(204).send();
       } catch (err: any) {
@@ -632,6 +644,7 @@ export function registerPortalRoutes(
   // ── GET /v1/portal/subtenants ─────────────────────────────────────────────
   fastify.get('/v1/portal/subtenants', { preHandler: authRequired }, async (request, reply) => {
     const { tenantId } = request.portalUser!;
+    const svc = new PortalService(request.em);
     const rows = await svc.listSubtenants(tenantId);
 
     return reply.send({
@@ -657,6 +670,7 @@ export function registerPortalRoutes(
       }
 
       try {
+        const tenantMgmtSvc = new TenantManagementService(request.em);
         const newTenant = await tenantMgmtSvc.createSubtenant(tenantId, {
           name,
           createdByUserId: userId,
@@ -682,7 +696,7 @@ export function registerPortalRoutes(
     const embeddingSvc = new EmbeddingAgentService();
     const { tenantId } = request.portalUser!;
     try {
-      const config = await embeddingSvc.resolveEmbedder(undefined, tenantId, orm.em.fork());
+      const config = await embeddingSvc.resolveEmbedder(undefined, tenantId, request.em);
       return reply.send({ available: true, provider: config.provider, model: config.model });
     } catch {
       return reply.send({ available: false, provider: null, model: null });
@@ -693,7 +707,7 @@ export function registerPortalRoutes(
   fastify.get('/v1/portal/available-providers', { preHandler: authRequired }, async (request, reply) => {
     const { tenantId } = request.portalUser!;
     const { ProviderManagementService } = await import('../application/services/ProviderManagementService.js');
-    const providerMgmtSvc = new ProviderManagementService(orm.em.fork());
+    const providerMgmtSvc = new ProviderManagementService(request.em);
     const providers = await providerMgmtSvc.listAvailableProvidersForTenant(tenantId);
     return reply.send({
       providers: providers.map(p => ({
@@ -709,6 +723,7 @@ export function registerPortalRoutes(
   // ── GET /v1/portal/agents ─────────────────────────────────────────────────
   fastify.get('/v1/portal/agents', { preHandler: authRequired }, async (request, reply) => {
     const { tenantId } = request.portalUser!;
+    const svc = new PortalService(request.em);
     const rows = await svc.listAgents(tenantId);
     return reply.send({ agents: rows.map(formatAgent) });
   });
@@ -735,6 +750,7 @@ export function registerPortalRoutes(
 
     const storedProviderConfig = prepareAgentProviderConfig(tenantId, providerConfig ?? null);
 
+    const tenantMgmtSvc = new TenantManagementService(request.em);
     const agent = await tenantMgmtSvc.createAgent(tenantId, {
       name,
       providerConfig: storedProviderConfig,
@@ -770,6 +786,7 @@ export function registerPortalRoutes(
     { preHandler: authRequired },
     async (request, reply) => {
       const { id } = request.params;
+      const svc = new PortalService(request.em);
       const row = await svc.getAgent(id, request.portalUser!.userId);
 
       if (!row) {
@@ -812,6 +829,7 @@ export function registerPortalRoutes(
           ? prepareAgentProviderConfig(tenantId, providerConfig)
           : undefined;
 
+      const tenantMgmtSvc = new TenantManagementService(request.em);
       const agent = await tenantMgmtSvc.updateAgent(tenantId, id, {
         name,
         providerConfig: preparedProviderConfig,
@@ -854,6 +872,7 @@ export function registerPortalRoutes(
       const { id } = request.params;
 
       try {
+        const tenantMgmtSvc = new TenantManagementService(request.em);
         await tenantMgmtSvc.deleteAgent(tenantId, id);
         return reply.code(204).send();
       } catch {
@@ -868,6 +887,7 @@ export function registerPortalRoutes(
     { preHandler: authRequired },
     async (request, reply) => {
       const { id } = request.params;
+      const svc = new PortalService(request.em);
       const data = await svc.getAgentResolved(id, request.portalUser!.userId);
 
       if (!data) {
@@ -957,6 +977,7 @@ export function registerPortalRoutes(
       }
 
       // Verify the user has access to this agent
+      const svc = new PortalService(request.em);
       const data = await svc.getAgentForChat(agentId, userId);
       if (!data) {
         return reply.code(404).send({ error: 'Agent not found' });
@@ -964,8 +985,7 @@ export function registerPortalRoutes(
 
       // Retrieve the agent's internal sandbox API key
       const { Agent: AgentEntity } = await import('../domain/entities/Agent.js');
-      const sandboxEm = orm.em.fork();
-      const agentEntity = await sandboxEm.findOne(AgentEntity, { id: agentId });
+      const agentEntity = await request.em.findOne(AgentEntity, { id: agentId });
       if (!agentEntity?.sandboxKey) {
         return reply.code(400).send({ error: 'Agent has no sandbox key. Re-create the agent or create an API key.' });
       }
@@ -1024,6 +1044,7 @@ export function registerPortalRoutes(
 
   fastify.get('/v1/portal/partitions', { preHandler: authRequired }, async (request, reply) => {
     const { tenantId } = request.portalUser!;
+    const svc = new PortalService(request.em);
     const rows = await svc.listPartitions(tenantId);
 
     const flat = rows.map((row) => {
@@ -1067,6 +1088,7 @@ export function registerPortalRoutes(
       }
 
       try {
+        const svc = new PortalService(request.em);
         const row = await svc.createPartition(
           tenantId, external_id, parent_id ?? null, titleEncrypted, titleIv,
         );
@@ -1106,6 +1128,7 @@ export function registerPortalRoutes(
         updates.parentId = parent_id;
       }
 
+      const svc = new PortalService(request.em);
       const updated = await svc.updatePartition(id, tenantId, updates);
       if (!updated) return reply.code(404).send({ error: 'Partition not found' });
       return reply.send({ success: true });
@@ -1119,6 +1142,7 @@ export function registerPortalRoutes(
       const { tenantId } = request.portalUser!;
       const { id } = request.params;
 
+      const svc = new PortalService(request.em);
       const deleted = await svc.deletePartition(id, tenantId);
       if (!deleted) return reply.code(404).send({ error: 'Partition not found' });
       return reply.send({ success: true });
@@ -1134,6 +1158,7 @@ export function registerPortalRoutes(
       const { tenantId } = request.portalUser!;
       const { partition_id } = request.query;
 
+      const svc = new PortalService(request.em);
       const rows = await svc.listConversations(tenantId, partition_id ?? null);
       return reply.send({
         conversations: rows.map((row) => ({
@@ -1156,6 +1181,7 @@ export function registerPortalRoutes(
       const { tenantId } = request.portalUser!;
       const { id } = request.params;
 
+      const svc = new PortalService(request.em);
       const data = await svc.getConversation(id, tenantId);
       if (!data) return reply.code(404).send({ error: 'Conversation not found' });
 
@@ -1203,7 +1229,7 @@ export function registerPortalRoutes(
   // ── GET /v1/portal/knowledge-bases ────────────────────────────────────────
   fastify.get('/v1/portal/knowledge-bases', { preHandler: authRequired }, async (request, reply) => {
     const { tenantId } = request.portalUser!;
-    const em = orm.em.fork();
+    const em = request.em;
     const artifacts = await em.find(
       (await import('../domain/entities/Artifact.js')).Artifact,
       { tenant: tenantId, kind: 'KnowledgeBase' },
@@ -1235,7 +1261,7 @@ export function registerPortalRoutes(
     async (request, reply) => {
       const { tenantId } = request.portalUser!;
       const { id } = request.params;
-      const em = orm.em.fork();
+      const em = request.em;
       const { Artifact } = await import('../domain/entities/Artifact.js');
       const artifact = await em.findOne(
         Artifact,
@@ -1275,7 +1301,7 @@ export function registerPortalRoutes(
       const { id } = request.params;
       const limit = Math.min(parseInt(request.query.limit ?? '50', 10), 200);
       const offset = parseInt(request.query.offset ?? '0', 10);
-      const em = orm.em.fork();
+      const em = request.em;
       const { Artifact } = await import('../domain/entities/Artifact.js');
       const artifact = await em.findOne(Artifact, { id, tenant: tenantId, kind: 'KnowledgeBase' });
       if (!artifact) return reply.code(404).send({ error: 'Knowledge base not found' });
@@ -1315,7 +1341,7 @@ export function registerPortalRoutes(
     async (request, reply) => {
       const { tenantId } = request.portalUser!;
       const { id } = request.params;
-      const em = orm.em.fork();
+      const em = request.em;
       const { Artifact } = await import('../domain/entities/Artifact.js');
       const artifact = await em.findOne(Artifact, { id, tenant: tenantId, kind: 'KnowledgeBase' });
       if (!artifact) return reply.code(404).send({ error: 'Knowledge base not found' });
@@ -1351,7 +1377,7 @@ export function registerPortalRoutes(
         return reply.code(400).send({ error: 'query is required' });
       }
 
-      const em = orm.em.fork();
+      const em = request.em;
       const { Artifact } = await import('../domain/entities/Artifact.js');
       const artifact = await em.findOne(Artifact, { id, tenant: tenantId, kind: 'KnowledgeBase' });
       if (!artifact) return reply.code(404).send({ error: 'Knowledge base not found' });
@@ -1388,7 +1414,7 @@ export function registerPortalRoutes(
     async (request, reply) => {
       const { tenantId } = request.portalUser!;
       const { id } = request.params;
-      const em = orm.em.fork();
+      const em = request.em;
       const { Artifact } = await import('../domain/entities/Artifact.js');
       const artifact = await em.findOne(Artifact, { id, tenant: tenantId, kind: 'KnowledgeBase' }, { populate: ['tags'] });
       if (!artifact) return reply.code(404).send({ error: 'Knowledge base not found' });
@@ -1409,7 +1435,7 @@ export function registerPortalRoutes(
 
   fastify.post('/v1/portal/knowledge-bases', { preHandler: ownerRequired }, async (request, reply) => {
     const { tenantId } = request.portalUser!;
-    const em = orm.em.fork();
+    const em = request.em;
 
     // Parse multipart form data
     const parts = request.parts();
@@ -1534,7 +1560,7 @@ export function registerPortalRoutes(
   // ── GET /v1/portal/deployments ────────────────────────────────────────────
   fastify.get('/v1/portal/deployments', { preHandler: authRequired }, async (request, reply) => {
     const { tenantId } = request.portalUser!;
-    const em = orm.em.fork();
+    const em = request.em;
     const deployments = await provisionSvc.listDeployments(tenantId, em);
     return reply.send({
       deployments: deployments.map((d) => ({
@@ -1556,7 +1582,7 @@ export function registerPortalRoutes(
     async (request, reply) => {
       const { tenantId } = request.portalUser!;
       const { id } = request.params;
-      const em = orm.em.fork();
+      const em = request.em;
       const deployment = await provisionSvc.getDeployment(id, tenantId, em);
       if (!deployment) return reply.code(404).send({ error: 'Deployment not found' });
       await em.populate(deployment, ['artifact', 'artifact.vectorSpace'] as any);
@@ -1591,7 +1617,7 @@ export function registerPortalRoutes(
     async (request, reply) => {
       const { tenantId } = request.portalUser!;
       const { id } = request.params;
-      const em = orm.em.fork();
+      const em = request.em;
       const ok = await provisionSvc.unprovision(id, tenantId, em);
       if (!ok) return reply.code(404).send({ error: 'Deployment not found' });
       return reply.send({ success: true });

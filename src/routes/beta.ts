@@ -1,6 +1,5 @@
 import type { FastifyInstance } from 'fastify';
 import { UniqueConstraintViolationException } from '@mikro-orm/core';
-import { orm } from '../orm.js';
 import { BetaSignup } from '../domain/entities/BetaSignup.js';
 import { User } from '../domain/entities/User.js';
 import { AdminService } from '../application/services/AdminService.js';
@@ -9,7 +8,7 @@ export function registerBetaRoutes(fastify: FastifyInstance): void {
   // ── GET /v1/beta/signups-enabled ──────────────────────────────────────────
   // Public endpoint to check if self-service signups are enabled
   fastify.get('/v1/beta/signups-enabled', async (request, reply) => {
-    const em = orm.em.fork();
+    const em = request.em;
     const adminService = new AdminService(em);
 
     try {
@@ -34,7 +33,7 @@ export function registerBetaRoutes(fastify: FastifyInstance): void {
     }
 
     const normalizedEmail = email.toLowerCase().trim();
-    const em = orm.em.fork();
+    const em = request.em;
 
     // Check if email already exists as a registered user
     // Return same success message to avoid information disclosure
