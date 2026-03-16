@@ -14,6 +14,7 @@ export class Tenant {
   systemPrompt!: string | null;
   skills!: any[] | null;
   mcpEndpoints!: any[] | null;
+  defaultProviderId!: string | null;
   status!: string;
   availableModels!: any[] | null;
   updatedAt!: Date;
@@ -31,6 +32,7 @@ export class Tenant {
     this.systemPrompt = null;
     this.skills = null;
     this.mcpEndpoints = null;
+    this.defaultProviderId = null;
     this.status = 'active';
     this.availableModels = null;
     this.updatedAt = new Date();

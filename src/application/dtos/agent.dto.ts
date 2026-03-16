@@ -2,6 +2,7 @@ export interface AgentViewModel {
   id: string;
   tenantId: string;
   name: string;
+  providerId: string | null;
   providerConfig: any;
   systemPrompt: string | null;
   skills: any[] | null;
@@ -18,6 +19,7 @@ export interface AgentViewModel {
 
 export interface CreateAgentDto {
   name: string;
+  providerId?: string | null;
   providerConfig?: any;
   systemPrompt?: string | null;
   skills?: any[] | null;
@@ -32,6 +34,7 @@ export interface CreateAgentDto {
 
 export interface UpdateAgentDto {
   name?: string;
+  providerId?: string | null;
   providerConfig?: any;
   systemPrompt?: string | null;
   skills?: any[] | null;

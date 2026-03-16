@@ -151,6 +151,24 @@ const start = async () => {
         ? getProviderForTenant(tenant)
         : (() => { throw new Error('No tenant context'); })();
 
+      // ── Model validation ──────────────────────────────────────────────────
+      // If the resolved provider entity has an allowlist, reject disallowed models.
+      if (tenant?.providerEntity) {
+        const allowedModels: string[] | undefined = tenant.providerEntity.availableModels;
+        if (allowedModels && allowedModels.length > 0) {
+          const requestedModel = (request.body as any)?.model;
+          if (requestedModel && !allowedModels.includes(requestedModel)) {
+            return reply.code(400).send({
+              error: {
+                message: `Model '${requestedModel}' is not available on this provider. Choose one of the allowed models.`,
+                code: 'model_not_available',
+                available_models: allowedModels,
+              },
+            });
+          }
+        }
+      }
+
       const rawBody = request.body as any;
 
       // ── Conversation handling ────────────────────────────────────────────────

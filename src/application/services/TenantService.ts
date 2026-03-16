@@ -96,9 +96,23 @@ export class TenantService {
     const resolvedProviderConfig =
       chain.find((c) => c.providerConfig != null)?.providerConfig ?? undefined;
 
-    // If the resolved provider config references a gateway provider entity, load it
+    // Provider entity resolution chain:
+    // 1. agent.providerId (direct FK — highest priority)
+    // 2. tenant.defaultProviderId (tenant-level default)
+    // 3. resolvedProviderConfig.gatewayProviderId (JSONB bridge)
+    // 4. Legacy JSONB providerConfig (existing fallback, handled by registry)
     let providerEntity: ProviderBase | undefined;
-    if (resolvedProviderConfig?.gatewayProviderId) {
+    if (agent?.providerId) {
+      const found = await this.em.findOne(ProviderBase, agent.providerId);
+      if (found) {
+        providerEntity = found;
+      }
+    } else if (tenant.defaultProviderId) {
+      const found = await this.em.findOne(ProviderBase, tenant.defaultProviderId);
+      if (found) {
+        providerEntity = found;
+      }
+    } else if (resolvedProviderConfig?.gatewayProviderId) {
       const found = await this.em.findOne(ProviderBase, resolvedProviderConfig.gatewayProviderId);
       if (found) {
         providerEntity = found;

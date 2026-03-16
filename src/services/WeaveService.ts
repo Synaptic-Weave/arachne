@@ -590,6 +590,14 @@ export class WeaveService {
       throw new Error(`weaveConfigArtifact expects Agent or EmbeddingAgent, got ${spec.kind}`);
     }
 
+    // Strip provider-specific fields for portability — exported specs must be
+    // provider-agnostic so they can be imported on any Arachne gateway.
+    const portableSpec = JSON.parse(JSON.stringify(spec));
+    if (portableSpec.spec) {
+      delete portableSpec.spec.providerId;
+      delete portableSpec.spec.providerConfig;
+    }
+
     const tarFiles: Array<{ path: string; data: Buffer }> = [
       {
         path: 'manifest.json',
@@ -608,7 +616,7 @@ export class WeaveService {
       },
       {
         path: 'spec.json',
-        data: Buffer.from(JSON.stringify(spec, null, 2), 'utf8'),
+        data: Buffer.from(JSON.stringify(portableSpec, null, 2), 'utf8'),
       },
     ];
 

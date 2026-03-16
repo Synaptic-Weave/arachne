@@ -5,6 +5,7 @@ import { ApiKey } from '../../domain/entities/ApiKey.js';
 import { TenantMembership } from '../../domain/entities/TenantMembership.js';
 import { User } from '../../domain/entities/User.js';
 import { Invite } from '../../domain/entities/Invite.js';
+import { ProviderBase } from '../../domain/entities/ProviderBase.js';
 import { evictProvider } from '../../providers/registry.js';
 import { encryptTraceBody } from '../../encryption.js';
 import type {
@@ -30,6 +31,7 @@ function toTenantViewModel(t: Tenant): TenantViewModel {
     id: t.id,
     name: t.name,
     status: t.status,
+    defaultProviderId: t.defaultProviderId ?? null,
     providerConfig: t.providerConfig,
     systemPrompt: t.systemPrompt,
     skills: t.skills,
@@ -44,6 +46,7 @@ function toAgentViewModel(a: Agent): AgentViewModel {
     id: a.id,
     tenantId: (a.tenant as any)?.id ?? '',
     name: a.name,
+    providerId: a.providerId ?? null,
     providerConfig: a.providerConfig,
     systemPrompt: a.systemPrompt,
     skills: a.skills,
@@ -117,6 +120,45 @@ export class TenantManagementService {
     return toTenantViewModel(tenant);
   }
 
+  async updateDefaultProvider(
+    tenantId: string,
+    defaultProviderId: string | null,
+  ): Promise<TenantViewModel> {
+    const tenant = await this.em.findOneOrFail(Tenant, { id: tenantId });
+
+    if (defaultProviderId !== null) {
+      // Validate provider exists and is accessible to this tenant
+      const provider = await this.em.findOne(ProviderBase, { id: defaultProviderId });
+      if (!provider) {
+        throw Object.assign(new Error('Provider not found'), { status: 404 });
+      }
+
+      // Provider must be either:
+      // 1. A gateway provider with tenantAvailable=true
+      // 2. The tenant's own custom provider
+      const isGatewayAvailable = provider.tenant === null && provider.tenantAvailable;
+      const isTenantOwned = provider.tenant !== null && (provider.tenant as any)?.id === tenantId;
+      // Also handle the case where tenant is loaded as a string ID (not populated)
+      const isTenantOwnedById = typeof provider.tenant === 'string' && provider.tenant === tenantId;
+
+      if (!isGatewayAvailable && !isTenantOwned && !isTenantOwnedById) {
+        throw Object.assign(
+          new Error('Provider is not accessible to this tenant'),
+          { status: 403 },
+        );
+      }
+    }
+
+    tenant.defaultProviderId = defaultProviderId;
+    tenant.updatedAt = new Date();
+    await this.em.flush();
+
+    // Evict cached provider so new default takes effect
+    evictProvider(tenantId);
+
+    return toTenantViewModel(tenant);
+  }
+
   async inviteUser(
     tenantId: string,
     createdByUserId: string,
@@ -168,6 +210,7 @@ export class TenantManagementService {
   async createAgent(tenantId: string, dto: CreateAgentDto): Promise<AgentViewModel> {
     const tenant = await this.em.findOneOrFail(Tenant, { id: tenantId });
     const agent = tenant.createAgent(dto.name, {
+      providerId: dto.providerId ?? null,
       providerConfig: dto.providerConfig,
       systemPrompt: dto.systemPrompt,
       skills: dto.skills,
@@ -201,6 +244,7 @@ export class TenantManagementService {
   ): Promise<AgentViewModel> {
     const agent = await this.em.findOneOrFail(Agent, { id: agentId, tenant: tenantId });
     if (dto.name !== undefined) agent.name = dto.name;
+    if (dto.providerId !== undefined) agent.providerId = dto.providerId;
     if (dto.providerConfig !== undefined) agent.providerConfig = dto.providerConfig;
     if (dto.systemPrompt !== undefined) agent.systemPrompt = dto.systemPrompt;
     if (dto.skills !== undefined) agent.skills = dto.skills;

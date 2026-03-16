@@ -2,6 +2,7 @@ export interface TenantViewModel {
   id: string;
   name: string;
   status: string;
+  defaultProviderId: string | null;
   providerConfig: any;
   systemPrompt: string | null;
   skills: any[] | null;

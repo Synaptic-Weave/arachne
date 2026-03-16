@@ -17,6 +17,8 @@ import { RegistryService } from '../services/RegistryService.js';
 import { ProvisionService } from '../services/ProvisionService.js';
 import { WeaveService } from '../services/WeaveService.js';
 import { EmbeddingAgentService } from '../services/EmbeddingAgentService.js';
+import { ProviderManagementService } from '../application/services/ProviderManagementService.js';
+import type { CreateProviderDto, UpdateProviderDto } from '../application/dtos/provider.dto.js';
 
 export function registerPortalRoutes(
   fastify: FastifyInstance,
@@ -62,6 +64,7 @@ export function registerPortalRoutes(
 
   function formatAgent(row: {
     id: string; name: string;
+    provider_id?: string | null;
     provider_config: Record<string, unknown> | null;
     system_prompt: string | null;
     skills: unknown[] | null;
@@ -77,6 +80,7 @@ export function registerPortalRoutes(
     return {
       id: row.id,
       name: row.name,
+      providerId: row.provider_id ?? null,
       providerConfig: sanitizeAgentProviderConfig(row.provider_config),
       systemPrompt: row.system_prompt,
       skills: row.skills,
@@ -202,6 +206,7 @@ export function registerPortalRoutes(
         id: row.tenant_id,
         name: row.tenant_name,
         orgSlug: row.org_slug,
+        defaultProviderId: row.default_provider_id ?? null,
         providerConfig,
         availableModels: row.available_models ?? null,
       },
@@ -289,6 +294,27 @@ export function registerPortalRoutes(
       },
       availableModels: availableModels !== undefined ? (availableModels ?? null) : undefined,
     });
+  });
+
+  // ── PUT /v1/portal/settings/default-provider ─────────────────────────────
+  fastify.put<{
+    Body: { defaultProviderId: string | null };
+  }>('/v1/portal/settings/default-provider', { preHandler: ownerRequired }, async (request, reply) => {
+    const { defaultProviderId } = request.body;
+    if (defaultProviderId !== null && typeof defaultProviderId !== 'string') {
+      return reply.code(400).send({ error: 'defaultProviderId must be a string UUID or null' });
+    }
+
+    const tenantMgmtSvc = new TenantManagementService(request.em);
+    const { tenantId } = request.portalUser!;
+
+    try {
+      const result = await tenantMgmtSvc.updateDefaultProvider(tenantId, defaultProviderId);
+      return reply.send({ defaultProviderId: result.defaultProviderId });
+    } catch (err: any) {
+      if (err.status) return reply.code(err.status).send({ error: err.message });
+      throw err;
+    }
   });
 
   // ── GET /v1/portal/api-keys ───────────────────────────────────────────────
@@ -787,6 +813,7 @@ export function registerPortalRoutes(
   fastify.post<{
     Body: {
       name: string;
+      providerId?: string | null;
       providerConfig?: Record<string, unknown>;
       systemPrompt?: string;
       skills?: unknown[];
@@ -797,7 +824,7 @@ export function registerPortalRoutes(
     };
   }>('/v1/portal/agents', { preHandler: authRequired }, async (request, reply) => {
     const { tenantId } = request.portalUser!;
-    const { name, providerConfig, systemPrompt, skills, mcpEndpoints, mergePolicies, conversationsEnabled, knowledgeBaseRef } = request.body;
+    const { name, providerId, providerConfig, systemPrompt, skills, mcpEndpoints, mergePolicies, conversationsEnabled, knowledgeBaseRef } = request.body;
 
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
       return reply.code(400).send({ error: 'name is required' });
@@ -808,6 +835,7 @@ export function registerPortalRoutes(
     const tenantMgmtSvc = new TenantManagementService(request.em);
     const agent = await tenantMgmtSvc.createAgent(tenantId, {
       name,
+      providerId: providerId ?? null,
       providerConfig: storedProviderConfig,
       systemPrompt: systemPrompt ?? null,
       skills: skills ?? null,
@@ -820,6 +848,7 @@ export function registerPortalRoutes(
     return reply.code(201).send({ agent: formatAgent({
       id: agent.id,
       name: agent.name,
+      provider_id: agent.providerId,
       provider_config: agent.providerConfig as Record<string, unknown> | null,
       system_prompt: agent.systemPrompt,
       skills: agent.skills as unknown[] | null,
@@ -856,6 +885,7 @@ export function registerPortalRoutes(
     Params: { id: string };
     Body: {
       name?: string;
+      providerId?: string | null;
       providerConfig?: Record<string, unknown>;
       systemPrompt?: string;
       skills?: unknown[];
@@ -874,7 +904,7 @@ export function registerPortalRoutes(
       const { tenantId, userId } = request.portalUser!;
       const { id } = request.params;
       const {
-        name, providerConfig, systemPrompt, skills, mcpEndpoints, mergePolicies,
+        name, providerId, providerConfig, systemPrompt, skills, mcpEndpoints, mergePolicies,
         availableModels, conversationsEnabled, conversationTokenLimit, conversationSummaryModel,
         knowledgeBaseRef,
       } = request.body;
@@ -887,6 +917,7 @@ export function registerPortalRoutes(
       const tenantMgmtSvc = new TenantManagementService(request.em);
       const agent = await tenantMgmtSvc.updateAgent(tenantId, id, {
         name,
+        providerId,
         providerConfig: preparedProviderConfig,
         systemPrompt,
         skills,
@@ -902,6 +933,7 @@ export function registerPortalRoutes(
       return reply.send({ agent: formatAgent({
         id: agent.id,
         name: agent.name,
+        provider_id: agent.providerId,
         provider_config: agent.providerConfig as Record<string, unknown> | null,
         system_prompt: agent.systemPrompt,
         skills: agent.skills as unknown[] | null,
@@ -1676,6 +1708,95 @@ export function registerPortalRoutes(
       const ok = await provisionSvc.unprovision(id, tenantId, em);
       if (!ok) return reply.code(404).send({ error: 'Deployment not found' });
       return reply.send({ success: true });
+    },
+  );
+
+  // ── Provider Management (BYOK) ────────────────────────────────────────────
+
+  // GET /v1/portal/providers — List gateway (sanitized) + custom (full) providers
+  fastify.get(
+    '/v1/portal/providers',
+    { preHandler: authRequired },
+    async (request, reply) => {
+      const { tenantId } = request.portalUser!;
+      const providerSvc = new ProviderManagementService(request.em);
+
+      const [gateway, custom] = await Promise.all([
+        providerSvc.listAvailableProvidersForTenant(tenantId),
+        providerSvc.listTenantProviders(tenantId),
+      ]);
+
+      return reply.send({ gateway, custom });
+    },
+  );
+
+  // POST /v1/portal/providers — Create tenant provider (owner-only)
+  fastify.post<{ Body: CreateProviderDto }>(
+    '/v1/portal/providers',
+    { preHandler: ownerRequired },
+    async (request, reply) => {
+      const { tenantId } = request.portalUser!;
+      const providerSvc = new ProviderManagementService(request.em);
+
+      try {
+        const provider = await providerSvc.createTenantProvider(tenantId, request.body);
+        return reply.code(201).send(provider);
+      } catch (err: any) {
+        if (err.status === 400 || err.status === 409) {
+          return reply.code(err.status).send({ error: err.message });
+        }
+        throw err;
+      }
+    },
+  );
+
+  // PUT /v1/portal/providers/:id — Update tenant provider (owner-only)
+  fastify.put<{ Params: { id: string }; Body: UpdateProviderDto }>(
+    '/v1/portal/providers/:id',
+    { preHandler: ownerRequired },
+    async (request, reply) => {
+      const { tenantId } = request.portalUser!;
+      const providerSvc = new ProviderManagementService(request.em);
+
+      try {
+        const provider = await providerSvc.updateTenantProvider(
+          tenantId,
+          request.params.id,
+          request.body,
+        );
+        return reply.send(provider);
+      } catch (err: any) {
+        if (err.name === 'NotFoundError') {
+          return reply.code(404).send({ error: 'Provider not found' });
+        }
+        if (err.status === 400) {
+          return reply.code(400).send({ error: err.message });
+        }
+        throw err;
+      }
+    },
+  );
+
+  // DELETE /v1/portal/providers/:id — Delete tenant provider (owner-only)
+  fastify.delete<{ Params: { id: string } }>(
+    '/v1/portal/providers/:id',
+    { preHandler: ownerRequired },
+    async (request, reply) => {
+      const { tenantId } = request.portalUser!;
+      const providerSvc = new ProviderManagementService(request.em);
+
+      try {
+        await providerSvc.deleteTenantProvider(tenantId, request.params.id);
+        return reply.code(204).send();
+      } catch (err: any) {
+        if (err.name === 'NotFoundError') {
+          return reply.code(404).send({ error: 'Provider not found' });
+        }
+        if (err.status === 409) {
+          return reply.code(409).send({ error: err.message });
+        }
+        throw err;
+      }
     },
   );
 }

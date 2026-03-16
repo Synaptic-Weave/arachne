@@ -54,6 +54,7 @@ export class PortalService {
         tenant_id: tenant.id,
         tenant_name: tenant.name,
         org_slug: tenant.orgSlug ?? null,
+        default_provider_id: tenant.defaultProviderId ?? null,
         provider_config: tenant.providerConfig,
         available_models: tenant.availableModels,
       },

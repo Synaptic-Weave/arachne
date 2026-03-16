@@ -20,6 +20,7 @@ export class Agent {
   conversationsEnabled!: boolean;
   conversationTokenLimit!: number;
   conversationSummaryModel!: string | null;
+  providerId!: string | null;
   sandboxKey!: string | null;
   createdAt!: Date;
   updatedAt!: Date | null;
@@ -45,6 +46,7 @@ export class Agent {
     this.conversationsEnabled = config?.conversationsEnabled ?? false;
     this.conversationTokenLimit = config?.conversationTokenLimit ?? 4000;
     this.conversationSummaryModel = config?.conversationSummaryModel ?? null;
+    this.providerId = config?.providerId ?? null;
     this.sandboxKey = null;
     this.createdAt = new Date();
     this.updatedAt = null;

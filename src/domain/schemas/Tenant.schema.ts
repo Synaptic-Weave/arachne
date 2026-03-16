@@ -16,6 +16,7 @@ export const TenantSchema = new EntitySchema<Tenant>({
     systemPrompt: { type: 'text', fieldName: 'system_prompt', nullable: true },
     skills: { type: 'json', nullable: true },
     mcpEndpoints: { type: 'json', fieldName: 'mcp_endpoints', nullable: true },
+    defaultProviderId: { type: 'uuid', fieldName: 'default_provider_id', nullable: true },
     status: { type: 'string', columnType: 'varchar(20)', default: 'active' },
     availableModels: { type: 'json', fieldName: 'available_models', nullable: true },
     updatedAt: { type: 'Date', fieldName: 'updated_at', onCreate: () => new Date(), onUpdate: () => new Date() },
