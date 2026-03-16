@@ -21,6 +21,7 @@ import type {
   UpdateAgentDto,
   ApiKeyViewModel,
   ApiKeyCreatedViewModel,
+  ApiKeyRotatedViewModel,
   CreateApiKeyDto,
 } from '../dtos/agent.dto.js';
 
@@ -243,7 +244,7 @@ export class TenantManagementService {
     tenantId: string,
     keyId: string,
     dto: CreateApiKeyDto = {},
-  ): Promise<ApiKeyCreatedViewModel> {
+  ): Promise<ApiKeyRotatedViewModel> {
     const oldKey = await this.em.findOneOrFail(
       ApiKey,
       { id: keyId, tenant: tenantId },
@@ -257,7 +258,7 @@ export class TenantManagementService {
     }
     this.em.persist(newKey);
     await this.em.flush();
-    return { ...toApiKeyViewModel(newKey), rawKey };
+    return { ...toApiKeyViewModel(newKey), rawKey, oldKeyHash: oldKey.keyHash };
   }
 
   async revokeApiKey(tenantId: string, keyId: string): Promise<{ keyHash: string }> {

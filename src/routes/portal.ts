@@ -378,6 +378,8 @@ export function registerPortalRoutes(
 
       try {
         const result = await tenantMgmtSvc.rotateApiKey(tenantId, keyId, { name, expiresAt });
+        // Invalidate old key from LRU cache so it must re-authenticate via DB
+        invalidateCachedKey(result.oldKeyHash);
         return reply.code(201).send({
           id: result.id,
           name: result.name,

@@ -131,7 +131,7 @@ function buildMockTenantMgmtSvc(): TenantManagementService {
     rotateApiKey: vi.fn().mockResolvedValue({
       id: 'new-key-uuid', name: 'Test Key', keyPrefix: 'loom_new_', status: 'active',
       createdAt: new Date().toISOString(), rawKey: 'loom_new_secret', agentId: TEST_AGENT_ID, agentName: TEST_AGENT_NAME,
-      expiresAt: null, rotatedFromId: 'key-uuid',
+      expiresAt: null, rotatedFromId: 'key-uuid', oldKeyHash: 'old-key-hash-123',
     }),
     createAgent: vi.fn().mockImplementation((tenantId: string, dto: any) => Promise.resolve({
       id: 'new-agent-id', tenantId, name: dto.name, providerConfig: dto.providerConfig,

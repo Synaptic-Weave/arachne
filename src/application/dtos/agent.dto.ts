@@ -60,6 +60,10 @@ export interface ApiKeyCreatedViewModel extends ApiKeyViewModel {
   rawKey: string;
 }
 
+export interface ApiKeyRotatedViewModel extends ApiKeyCreatedViewModel {
+  oldKeyHash: string;
+}
+
 export interface CreateApiKeyDto {
   name?: string;
   expiresAt?: string;
