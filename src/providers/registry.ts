@@ -25,16 +25,17 @@ const tenantIndex = new Map<string, Set<string>>(); // tenantId → cache keys
  * API keys stored in provider_config may be encrypted with format:
  *   "encrypted:{ciphertext}:{iv}"
  */
-export function getProviderForTenant(tenantCtx: TenantContext): BaseProvider {
+export async function getProviderForTenant(tenantCtx: TenantContext): Promise<BaseProvider> {
   const cacheKey = tenantCtx.agentId ?? tenantCtx.tenantId;
   const cached = providerCache.get(cacheKey);
   if (cached) return cached;
 
   const cfg = tenantCtx.providerConfig;
 
-  // If agent has a gatewayProviderId, resolve from the gateway provider entity
+  // If a gateway provider entity is referenced, load it from the DB and build
+  // the adapter using the same construction path as inline JSONB configs.
   if (cfg?.gatewayProviderId) {
-    const provider = resolveGatewayProvider(cfg.gatewayProviderId as string, tenantCtx);
+    const provider = await resolveGatewayProvider(cfg.gatewayProviderId, tenantCtx);
     if (provider) {
       providerCache.set(cacheKey, provider);
       const keys = tenantIndex.get(tenantCtx.tenantId) ?? new Set<string>();
@@ -43,6 +44,7 @@ export function getProviderForTenant(tenantCtx: TenantContext): BaseProvider {
       return provider;
     }
   }
+
   let provider: BaseProvider;
 
   // Decrypt API key if encrypted
@@ -93,23 +95,16 @@ export function getProviderForTenant(tenantCtx: TenantContext): BaseProvider {
 }
 
 /**
- * Synchronously resolve a gateway provider entity into a BaseProvider adapter.
- * Uses a synchronous em.getReference + cached entity approach.
+ * Load a gateway provider entity from the DB and build a proxy adapter.
+ * Uses em.findOne() so entity properties are fully populated.
  */
-function resolveGatewayProvider(gatewayProviderId: string, tenantCtx: TenantContext): BaseProvider | null {
+async function resolveGatewayProvider(gatewayProviderId: string, tenantCtx: TenantContext): Promise<BaseProvider | null> {
   try {
-    // Use a sync cached lookup — the entity should be loaded during auth middleware
     const em = orm.em.fork();
-    // We can't do async in a sync function, so we rely on the identity map
-    // Instead, load synchronously from the cached provider map
-    const ref = em.getReference(ProviderBase, gatewayProviderId);
-    // If the entity is not in the identity map, we need to skip
-    if (!ref || !ref.apiKey) return null;
+    const gw = await em.findOne(ProviderBase, { id: gatewayProviderId });
+    if (!gw) return null;
 
-    const gwType = ref.constructor.name;
-    let apiKey = ref.apiKey;
-
-    // Decrypt if needed — gateway providers store keys without tenant-scoped encryption
+    let apiKey = gw.apiKey;
     if (apiKey && apiKey.startsWith('encrypted:')) {
       try {
         const parts = apiKey.split(':');
@@ -121,89 +116,30 @@ function resolveGatewayProvider(gatewayProviderId: string, tenantCtx: TenantCont
       }
     }
 
-    if (gwType === 'AzureProvider' || (ref as any).deployment) {
+    const gwType = gw.constructor.name;
+
+    if (gwType === 'AzureProvider' || (gw as any).deployment) {
       return new AzureProvider({
         apiKey: apiKey ?? '',
-        endpoint: (ref as any).baseUrl ?? '',
-        deployment: (ref as any).deployment ?? '',
-        apiVersion: (ref as any).apiVersion ?? '2024-02-01',
-        deploymentMap: (ref as any).deploymentMap,
+        endpoint: (gw as any).baseUrl ?? '',
+        deployment: (gw as any).deployment ?? '',
+        apiVersion: (gw as any).apiVersion ?? '2024-02-01',
+        deploymentMap: (gw as any).deploymentMap,
       });
     } else if (gwType === 'OllamaProvider') {
       return new OpenAIProvider({
         apiKey: 'ollama',
-        baseUrl: ((ref as any).baseUrl ?? 'http://localhost:11434') + '/v1',
+        baseUrl: ((gw as any).baseUrl ?? 'http://localhost:11434') + '/v1',
       });
     } else {
       return new OpenAIProvider({
         apiKey: apiKey ?? process.env.OPENAI_API_KEY ?? '',
-        baseUrl: (ref as any).baseUrl,
+        baseUrl: (gw as any).baseUrl,
       });
     }
   } catch {
     return null;
   }
-}
-
-/**
- * Async version for cases where gateway provider isn't in identity map.
- */
-export async function getProviderForTenantAsync(tenantCtx: TenantContext): Promise<BaseProvider> {
-  const cacheKey = tenantCtx.agentId ?? tenantCtx.tenantId;
-  const cached = providerCache.get(cacheKey);
-  if (cached) return cached;
-
-  const cfg = tenantCtx.providerConfig;
-
-  if (cfg?.gatewayProviderId) {
-    const em = orm.em.fork();
-    const gwProvider = await em.findOne(ProviderBase, { id: cfg.gatewayProviderId as string });
-    if (gwProvider) {
-      let apiKey = gwProvider.apiKey;
-      if (apiKey && apiKey.startsWith('encrypted:')) {
-        try {
-          const parts = apiKey.split(':');
-          if (parts.length === 3) {
-            apiKey = decryptTraceBody(tenantCtx.tenantId, parts[1], parts[2]);
-          }
-        } catch {
-          apiKey = '';
-        }
-      }
-
-      let provider: BaseProvider;
-      const gwType = gwProvider.constructor.name;
-
-      if (gwType === 'AzureProvider' || (gwProvider as any).deployment) {
-        provider = new AzureProvider({
-          apiKey: apiKey ?? '',
-          endpoint: (gwProvider as any).baseUrl ?? '',
-          deployment: (gwProvider as any).deployment ?? '',
-          apiVersion: (gwProvider as any).apiVersion ?? '2024-02-01',
-          deploymentMap: (gwProvider as any).deploymentMap,
-        });
-      } else if (gwType === 'OllamaProvider') {
-        provider = new OpenAIProvider({
-          apiKey: 'ollama',
-          baseUrl: ((gwProvider as any).baseUrl ?? 'http://localhost:11434') + '/v1',
-        });
-      } else {
-        provider = new OpenAIProvider({
-          apiKey: apiKey ?? process.env.OPENAI_API_KEY ?? '',
-          baseUrl: (gwProvider as any).baseUrl,
-        });
-      }
-
-      providerCache.set(cacheKey, provider);
-      const keys = tenantIndex.get(tenantCtx.tenantId) ?? new Set<string>();
-      keys.add(cacheKey);
-      tenantIndex.set(tenantCtx.tenantId, keys);
-      return provider;
-    }
-  }
-
-  // Fall back to sync resolution
-  return getProviderForTenant(tenantCtx);
 }
 
 /**
