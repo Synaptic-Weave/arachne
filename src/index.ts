@@ -148,7 +148,7 @@ const start = async () => {
       }
 
       const provider = tenant
-        ? getProviderForTenant(tenant)
+        ? await getProviderForTenant(tenant)
         : (() => { throw new Error('No tenant context'); })();
 
       // ── Model validation ──────────────────────────────────────────────────

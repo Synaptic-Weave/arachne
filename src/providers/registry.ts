@@ -3,6 +3,8 @@ import { AzureProvider } from './azure.js';
 import type { BaseProvider } from './base.js';
 import type { TenantContext } from '../auth.js';
 import { decryptTraceBody } from '../encryption.js';
+import { ProviderBase } from '../domain/entities/ProviderBase.js';
+import { orm } from '../orm.js';
 
 // Lazy-initialised provider instances.
 // Primary key: agentId (when available) or tenantId.
@@ -28,12 +30,14 @@ function cacheProvider(cacheKey: string, tenantId: string, provider: BaseProvide
  * 1. Cache hit — return immediately
  * 2. Entity-first path — if `tenantCtx.providerEntity` exists (loaded by TenantService),
  *    delegate to `entity.createClient(tenantId)`
- * 3. Legacy JSONB path — fall back to `tenantCtx.providerConfig` fields
+ * 3. Gateway provider entity — if `providerConfig.gatewayProviderId` is set,
+ *    load from DB via em.findOne() and build adapter
+ * 4. Legacy JSONB path — fall back to `tenantCtx.providerConfig` fields
  *
  * API keys stored in provider_config may be encrypted with format:
  *   "encrypted:{ciphertext}:{iv}"
  */
-export function getProviderForTenant(tenantCtx: TenantContext): BaseProvider {
+export async function getProviderForTenant(tenantCtx: TenantContext): Promise<BaseProvider> {
   const cacheKey = tenantCtx.agentId ?? tenantCtx.tenantId;
   const cached = providerCache.get(cacheKey);
   if (cached) return cached;
@@ -44,8 +48,17 @@ export function getProviderForTenant(tenantCtx: TenantContext): BaseProvider {
     return cacheProvider(cacheKey, tenantCtx.tenantId, provider);
   }
 
-  // ── Legacy JSONB path ──────────────────────────────────────────────────────
+  // ── Gateway provider entity path ───────────────────────────────────────────
   const cfg = tenantCtx.providerConfig;
+
+  if (cfg?.gatewayProviderId) {
+    const provider = await resolveGatewayProvider(cfg.gatewayProviderId, tenantCtx);
+    if (provider) {
+      return cacheProvider(cacheKey, tenantCtx.tenantId, provider);
+    }
+  }
+
+  // ── Legacy JSONB path ──────────────────────────────────────────────────────
   let provider: BaseProvider;
 
   // Decrypt API key if encrypted
@@ -86,6 +99,54 @@ export function getProviderForTenant(tenantCtx: TenantContext): BaseProvider {
   }
 
   return cacheProvider(cacheKey, tenantCtx.tenantId, provider);
+}
+
+/**
+ * Load a gateway provider entity from the DB and build a proxy adapter.
+ * Uses em.findOne() so entity properties are fully populated.
+ */
+async function resolveGatewayProvider(gatewayProviderId: string, tenantCtx: TenantContext): Promise<BaseProvider | null> {
+  try {
+    const em = orm.em.fork();
+    const gw = await em.findOne(ProviderBase, { id: gatewayProviderId });
+    if (!gw) return null;
+
+    let apiKey = gw.apiKey;
+    if (apiKey && apiKey.startsWith('encrypted:')) {
+      try {
+        const parts = apiKey.split(':');
+        if (parts.length === 3) {
+          apiKey = decryptTraceBody(tenantCtx.tenantId, parts[1], parts[2]);
+        }
+      } catch {
+        apiKey = '';
+      }
+    }
+
+    const gwType = gw.constructor.name;
+
+    if (gwType === 'AzureProvider' || (gw as any).deployment) {
+      return new AzureProvider({
+        apiKey: apiKey ?? '',
+        endpoint: (gw as any).baseUrl ?? '',
+        deployment: (gw as any).deployment ?? '',
+        apiVersion: (gw as any).apiVersion ?? '2024-02-01',
+        deploymentMap: (gw as any).deploymentMap,
+      });
+    } else if (gwType === 'OllamaProvider') {
+      return new OpenAIProvider({
+        apiKey: 'ollama',
+        baseUrl: ((gw as any).baseUrl ?? 'http://localhost:11434') + '/v1',
+      });
+    } else {
+      return new OpenAIProvider({
+        apiKey: apiKey ?? process.env.OPENAI_API_KEY ?? '',
+        baseUrl: (gw as any).baseUrl,
+      });
+    }
+  } catch {
+    return null;
+  }
 }
 
 /**
