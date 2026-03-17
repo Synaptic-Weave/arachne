@@ -6,21 +6,16 @@ on:
       - content/site-landing-page
 
 jobs:
-  sync:
-    name: Merge into develop and main
+  sync-develop:
+    name: Merge into develop
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      pull-requests: write
-
-    strategy:
-      matrix:
-        target: [develop, main]
 
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ matrix.target }}
+          ref: develop
           fetch-depth: 0
 
       - name: Merge content branch
@@ -29,22 +24,53 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git merge origin/content/site-landing-page --no-ff \
-            -m "chore: sync site content into ${{ matrix.target }}" \
+            -m "chore: sync site content into develop" \
             && echo "result=success" >> $GITHUB_OUTPUT \
             || echo "result=conflict" >> $GITHUB_OUTPUT
 
       - name: Push merge
         if: steps.merge.outputs.result == 'success'
-        run: git push origin ${{ matrix.target }}
+        run: git push origin develop
 
-      - name: Create PR on conflict
+      - name: Warn on conflict
         if: steps.merge.outputs.result == 'conflict'
         run: |
-          git merge --abort
+          echo "::warning::Auto-merge into develop failed due to conflicts. Manual merge required."
+          exit 1
+
+  pr-main:
+    name: Open PR to main
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for existing PR
+        id: existing
+        run: |
+          PR=$(gh pr list --base main --head content/site-landing-page --state open --json number --jq '.[0].number // empty')
+          echo "pr=$PR" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create PR to main
+        if: steps.existing.outputs.pr == ''
+        run: |
           gh pr create \
-            --base ${{ matrix.target }} \
+            --base main \
             --head content/site-landing-page \
-            --title "chore: sync site content into ${{ matrix.target }}" \
-            --body "Auto-merge failed due to conflicts. Please resolve manually."
+            --title "chore: sync site content into main" \
+            --body "$(cat <<'EOF'
+          ## Summary
+          - Auto-generated PR to sync site content changes into main
+
+          Triggered by push to `content/site-landing-page`.
+          EOF
+          )"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
