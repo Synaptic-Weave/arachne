@@ -19,7 +19,8 @@
   "devDependencies": {
     "typescript": "^5.0.0",
     "@types/node": "^20.0.0",
-    "@types/form-data": "^2.5.0"
+    "@types/form-data": "^2.5.0",
+    "vitest": "^3.0.0"
   },
   "engines": {
     "node": ">=18"

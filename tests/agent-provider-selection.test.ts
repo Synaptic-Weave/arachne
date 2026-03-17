@@ -126,7 +126,7 @@ describe('Provider resolution — agent.providerId priority', () => {
     evictProvider('tenant-chain-test');
   });
 
-  it('agent.providerId entity takes priority over JSONB gatewayProviderId', () => {
+  it('agent.providerId entity takes priority over JSONB gatewayProviderId', async () => {
     // This tests the registry path: when providerEntity is set (from agent.providerId),
     // it should be used even if providerConfig also has a gatewayProviderId
     const entity = makeOpenAIEntity();
@@ -140,7 +140,7 @@ describe('Provider resolution — agent.providerId priority', () => {
       },
     });
 
-    const provider = getProviderForTenant(ctx);
+    const provider = await getProviderForTenant(ctx);
     // Should use the entity, not the JSONB config
     expect(provider).toBeDefined();
     expect(provider.name).toBe('openai');

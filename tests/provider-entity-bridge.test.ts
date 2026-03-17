@@ -153,7 +153,7 @@ describe('Provider registry — entity-first path', () => {
     evictProvider('agent-entity-test');
   });
 
-  it('uses providerEntity.createClient() when entity is present', () => {
+  it('uses providerEntity.createClient() when entity is present', async () => {
     const entity = makeOpenAIEntity();
     const ctx = makeTenantContext({
       tenantId: 'tenant-entity-test',
@@ -164,11 +164,11 @@ describe('Provider registry — entity-first path', () => {
       },
     });
 
-    const provider = getProviderForTenant(ctx);
+    const provider = await getProviderForTenant(ctx);
     expect(provider).toBeInstanceOf(OpenAIProxyAdapter);
   });
 
-  it('falls back to legacy JSONB path when no entity', () => {
+  it('falls back to legacy JSONB path when no entity', async () => {
     const ctx = makeTenantContext({
       tenantId: 'tenant-entity-test',
       providerConfig: {
@@ -178,12 +178,12 @@ describe('Provider registry — entity-first path', () => {
       },
     });
 
-    const provider = getProviderForTenant(ctx);
+    const provider = await getProviderForTenant(ctx);
     expect(provider).toBeInstanceOf(OpenAIProxyAdapter);
     expect(provider.name).toBe('openai'); // Ollama uses OpenAI adapter
   });
 
-  it('caches provider from entity path', () => {
+  it('caches provider from entity path', async () => {
     const entity = makeAzureEntity();
     const ctx = makeTenantContext({
       tenantId: 'tenant-entity-test',
@@ -191,31 +191,31 @@ describe('Provider registry — entity-first path', () => {
       providerEntity: entity,
     });
 
-    const first = getProviderForTenant(ctx);
-    const second = getProviderForTenant(ctx);
-    expect(first).toBe(second); // Same reference — cached
+    const first = await getProviderForTenant(ctx);
+    const second = await getProviderForTenant(ctx);
+    expect(first).toBe(second); // Same reference (cached)
   });
 
-  it('entity-first path works with Azure entity', () => {
+  it('entity-first path works with Azure entity', async () => {
     const entity = makeAzureEntity();
     const ctx = makeTenantContext({
       tenantId: 'tenant-entity-test',
       providerEntity: entity,
     });
 
-    const provider = getProviderForTenant(ctx);
+    const provider = await getProviderForTenant(ctx);
     expect(provider).toBeInstanceOf(AzureProxyAdapter);
     expect(provider.name).toBe('azure');
   });
 
-  it('entity-first path works with Ollama entity', () => {
+  it('entity-first path works with Ollama entity', async () => {
     const entity = makeOllamaEntity();
     const ctx = makeTenantContext({
       tenantId: 'tenant-entity-test',
       providerEntity: entity,
     });
 
-    const provider = getProviderForTenant(ctx);
+    const provider = await getProviderForTenant(ctx);
     expect(provider).toBeInstanceOf(OpenAIProxyAdapter);
   });
 });
@@ -227,7 +227,7 @@ describe('Provider registry — legacy JSONB fallback', () => {
     evictProvider('tenant-legacy-test');
   });
 
-  it('creates OpenAI provider from JSONB config', () => {
+  it('creates OpenAI provider from JSONB config', async () => {
     const ctx = makeTenantContext({
       tenantId: 'tenant-legacy-test',
       providerConfig: {
@@ -236,11 +236,11 @@ describe('Provider registry — legacy JSONB fallback', () => {
       },
     });
 
-    const provider = getProviderForTenant(ctx);
+    const provider = await getProviderForTenant(ctx);
     expect(provider).toBeInstanceOf(OpenAIProxyAdapter);
   });
 
-  it('creates Azure provider from JSONB config', () => {
+  it('creates Azure provider from JSONB config', async () => {
     const ctx = makeTenantContext({
       tenantId: 'tenant-legacy-test',
       providerConfig: {
@@ -252,11 +252,11 @@ describe('Provider registry — legacy JSONB fallback', () => {
       },
     });
 
-    const provider = getProviderForTenant(ctx);
+    const provider = await getProviderForTenant(ctx);
     expect(provider).toBeInstanceOf(AzureProxyAdapter);
   });
 
-  it('creates Ollama provider from JSONB config', () => {
+  it('creates Ollama provider from JSONB config', async () => {
     const ctx = makeTenantContext({
       tenantId: 'tenant-legacy-test',
       providerConfig: {
@@ -266,16 +266,16 @@ describe('Provider registry — legacy JSONB fallback', () => {
       },
     });
 
-    const provider = getProviderForTenant(ctx);
+    const provider = await getProviderForTenant(ctx);
     expect(provider).toBeInstanceOf(OpenAIProxyAdapter);
   });
 
-  it('falls back to OpenAI with env var when no config', () => {
+  it('falls back to OpenAI with env var when no config', async () => {
     const ctx = makeTenantContext({
       tenantId: 'tenant-legacy-test',
     });
 
-    const provider = getProviderForTenant(ctx);
+    const provider = await getProviderForTenant(ctx);
     expect(provider).toBeInstanceOf(OpenAIProxyAdapter);
   });
 });

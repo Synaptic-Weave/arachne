@@ -5,7 +5,7 @@ export default defineConfig({
     name: 'arachne',
     globals: true,
     environment: 'node',
-    exclude: ['portal/**', '**/node_modules/**'],
+    exclude: ['portal/**', 'cli/**', '**/node_modules/**'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
