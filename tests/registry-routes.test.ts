@@ -261,6 +261,52 @@ describe('POST /v1/registry/push', () => {
   });
 });
 
+// ── Member-role scope enforcement ────────────────────────────────────────────
+
+describe('Member-role JWT (artifact:read only)', () => {
+  let app: FastifyInstance;
+  const memberToken = makeToken(['artifact:read']);
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    app = await buildApp();
+  });
+
+  afterEach(async () => { await app.close(); });
+
+  it('can list artifacts with artifact:read scope', async () => {
+    mockRegistryInstance.list.mockResolvedValue([
+      { name: 'shared-kb', tags: ['latest'], kind: 'KnowledgeBase', latestVersion: 'v1' },
+    ]);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/v1/registry/list',
+      headers: { authorization: `Bearer ${memberToken}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toHaveLength(1);
+    expect(res.json()[0].name).toBe('shared-kb');
+  });
+
+  it('cannot push artifacts (gets 403)', async () => {
+    const { body, boundary } = buildMultipart({ name: 'my-kb', kind: 'KnowledgeBase', tag: 'latest' });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/registry/push',
+      headers: {
+        authorization: `Bearer ${memberToken}`,
+        'content-type': `multipart/form-data; boundary=${boundary}`,
+      },
+      payload: body,
+    });
+
+    expect(res.statusCode).toBe(403);
+  });
+});
+
 // ── GET /v1/registry/list ────────────────────────────────────────────────────
 
 describe('GET /v1/registry/list', () => {

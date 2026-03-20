@@ -18,8 +18,11 @@ const VALID_KB_SPEC = `apiVersion: arachne.ai/v0
 kind: KnowledgeBase
 metadata:
   name: test-kb
+  docsPath: ./docs
 spec:
-  embeddingModel: text-embedding-3-small
+  chunking:
+    tokenSize: 650
+    overlap: 120
 `;
 
 function makeTempDir(): string {
@@ -82,19 +85,41 @@ describe('arachne weave', () => {
     const specPath = join(tempDir, 'kb.yaml');
     writeFileSync(specPath, VALID_KB_SPEC);
 
-    await weaveCommand.parseAsync(['node', 'arachne', specPath, '-o', outDir]);
+    // Create docs directory with a small text file
+    const docsDir = join(tempDir, 'docs');
+    mkdirSync(docsDir, { recursive: true });
+    writeFileSync(join(docsDir, 'test.txt'), 'Hello world test content for chunking.');
 
-    const orbPath = join(outDir, 'test-kb.orb');
-    expect(existsSync(orbPath)).toBe(true);
+    // Mock embedding env vars and fetch
+    process.env['ARACHNE_EMBED_PROVIDER'] = 'openai';
+    process.env['ARACHNE_EMBED_MODEL'] = 'text-embedding-3-small';
+    process.env['ARACHNE_EMBED_API_KEY'] = 'test-key';
 
-    const entries = listOrbEntries(orbPath);
-    expect(entries).toContain('spec.yaml');
-    expect(entries).toContain('manifest.json');
+    const mockFetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ data: [{ embedding: Array(1536).fill(0.1), index: 0 }] }), { status: 200 }),
+    );
 
-    // Verify the manifest references KnowledgeBase kind
-    const manifest = JSON.parse(extractOrbEntry(orbPath, 'manifest.json'));
-    expect(manifest.kind).toBe('KnowledgeBase');
-    expect(manifest.name).toBe('test-kb');
+    try {
+      await weaveCommand.parseAsync(['node', 'arachne', specPath, '-o', outDir]);
+
+      const orbPath = join(outDir, 'test-kb.orb');
+      expect(existsSync(orbPath)).toBe(true);
+
+      const entries = listOrbEntries(orbPath);
+      expect(entries).toContain('spec.yaml');
+      expect(entries).toContain('manifest.json');
+
+      // Verify the manifest references KnowledgeBase kind
+      const manifest = JSON.parse(extractOrbEntry(orbPath, 'manifest.json'));
+      expect(manifest.kind).toBe('KnowledgeBase');
+      expect(manifest.name).toBe('test-kb');
+      expect(manifest.chunkCount).toBeGreaterThan(0);
+    } finally {
+      mockFetch.mockRestore();
+      delete process.env['ARACHNE_EMBED_PROVIDER'];
+      delete process.env['ARACHNE_EMBED_MODEL'];
+      delete process.env['ARACHNE_EMBED_API_KEY'];
+    }
   });
 
   it('manifest contains correct metadata fields', async () => {

@@ -1,7 +1,7 @@
 import { promisify } from 'node:util';
 import { scrypt, randomBytes, timingSafeEqual } from 'node:crypto';
 import { signJwt } from '../../auth/jwtUtils.js';
-import { TENANT_OWNER_SCOPES } from '../../auth/registryScopes.js';
+import { TENANT_OWNER_SCOPES, TENANT_MEMBER_SCOPES } from '../../auth/registryScopes.js';
 import type { EntityManager } from '@mikro-orm/core';
 import { User } from '../../domain/entities/User.js';
 import { Tenant } from '../../domain/entities/Tenant.js';
@@ -118,7 +118,7 @@ export class UserManagementService {
       role: m.role,
     }));
 
-    const scopes = primaryMembership.role === 'owner' ? TENANT_OWNER_SCOPES : [];
+    const scopes = primaryMembership.role === 'owner' ? TENANT_OWNER_SCOPES : TENANT_MEMBER_SCOPES;
     const token = signJwt({ sub: user.id, tenantId, role: primaryMembership.role, scopes, orgSlug: (primaryMembership.tenant as Tenant).orgSlug ?? null }, PORTAL_JWT_SECRET, 86_400_000);
     return { token, userId: user.id, tenantId, email: user.email, tenantName, tenants };
   }
@@ -235,7 +235,7 @@ export class UserManagementService {
     invite.useCount += 1;
     await this.em.flush();
 
-    const inviteScopes = role === 'owner' ? TENANT_OWNER_SCOPES : [];
+    const inviteScopes = role === 'owner' ? TENANT_OWNER_SCOPES : TENANT_MEMBER_SCOPES;
     const token = signJwt({ sub: user.id, tenantId: tenant.id, role, scopes: inviteScopes, orgSlug: tenant.orgSlug ?? null }, PORTAL_JWT_SECRET, 86_400_000);
     return {
       token,
@@ -281,7 +281,7 @@ export class UserManagementService {
       role: m.role,
     }));
 
-    const switchScopes = membership.role === 'owner' ? TENANT_OWNER_SCOPES : [];
+    const switchScopes = membership.role === 'owner' ? TENANT_OWNER_SCOPES : TENANT_MEMBER_SCOPES;
     const token = signJwt({ sub: userId, tenantId: newTenantId, role: membership.role, scopes: switchScopes, orgSlug: tenant.orgSlug ?? null }, PORTAL_JWT_SECRET, 86_400_000);
     return {
       token,

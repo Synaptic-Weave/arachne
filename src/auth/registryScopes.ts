@@ -15,3 +15,8 @@ export const TENANT_OWNER_SCOPES: RegistryScope[] = [
   REGISTRY_SCOPES.DEPLOY_WRITE,
   REGISTRY_SCOPES.ARTIFACT_READ,
 ];
+
+// Scopes automatically granted to tenant members (non-owners)
+export const TENANT_MEMBER_SCOPES: RegistryScope[] = [
+  REGISTRY_SCOPES.ARTIFACT_READ,
+];
