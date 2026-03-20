@@ -18,7 +18,8 @@ export const deployCommand = new Command('deploy')
   .description('Deploy an artifact to a runtime environment')
   .argument('<artifact>', 'Artifact reference (org/name[:tag], tag defaults to "latest")')
   .option('--environment <env>', 'Deployment environment (defaults to "production")', 'production')
-  .action(async (artifact: string, options: { environment: string }) => {
+  .option('--name <name>', 'Custom deployment name (defaults to artifactName-environment)')
+  .action(async (artifact: string, options: { environment: string; name?: string }) => {
     let gatewayUrl: string;
     let token: string;
     try {
@@ -43,6 +44,9 @@ export const deployCommand = new Command('deploy')
     // Build URL with path params and query string
     const url = new URL(`${gatewayUrl}/v1/registry/deployments/${org}/${name}/${tag}`);
     url.searchParams.set('environment', environment);
+    if (options.name) {
+      url.searchParams.set('name', options.name);
+    }
 
     const res = await fetch(url.toString(), {
       method: 'POST',
@@ -55,9 +59,12 @@ export const deployCommand = new Command('deploy')
       handleApiError(res.status, await res.text());
     }
 
-    const data = await res.json() as { deploymentId: string; status: string; runtimeToken?: string };
+    const data = await res.json() as { deploymentId: string; name?: string; status: string; runtimeToken?: string };
     console.log(`✓ Deployed ${org}/${name}:${tag} → ${environment}`);
     console.log(`  Deployment ID: ${data.deploymentId}`);
+    if (data.name) {
+      console.log(`  Name: ${data.name}`);
+    }
     console.log(`  Status: ${data.status}`);
     if (data.runtimeToken) {
       console.log(`  Runtime token: ${data.runtimeToken.substring(0, 20)}...`);

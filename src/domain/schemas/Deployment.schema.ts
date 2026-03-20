@@ -11,6 +11,7 @@ export const DeploymentSchema = new EntitySchema<Deployment>({
     tenant: { kind: 'm:1', entity: () => Tenant, fieldName: 'tenant_id' },
     artifact: { kind: 'm:1', entity: () => Artifact, fieldName: 'artifact_id' },
     environment: { type: 'string', columnType: 'varchar(50)', default: 'production' },
+    name: { type: 'string', columnType: 'varchar(200)' },
     status: { type: 'string', columnType: 'varchar(50)', default: 'PENDING' },
     runtimeToken: { type: 'text', fieldName: 'runtime_token', nullable: true },
     errorMessage: { type: 'text', fieldName: 'error_message', nullable: true },

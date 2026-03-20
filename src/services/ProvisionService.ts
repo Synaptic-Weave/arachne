@@ -2,15 +2,11 @@ import { randomUUID } from 'node:crypto';
 import type { EntityManager } from '@mikro-orm/core';
 import { signJwt } from '../auth/jwtUtils.js';
 import { REGISTRY_SCOPES } from '../auth/registryScopes.js';
+import { RUNTIME_JWT_SECRET } from '../auth/secrets.js';
 import { RegistryService } from './RegistryService.js';
 import { Deployment } from '../domain/entities/Deployment.js';
 import { Tenant } from '../domain/entities/Tenant.js';
 import { KbChunk } from '../domain/entities/KbChunk.js';
-
-const RUNTIME_JWT_SECRET =
-  process.env.RUNTIME_JWT_SECRET ??
-  process.env.PORTAL_JWT_SECRET ??
-  'unsafe-runtime-secret-change-in-production';
 
 const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
 
@@ -19,10 +15,12 @@ export interface DeployInput {
   artifactRef: { org: string; name: string; tag: string };
   environment: string;    // default: 'production'
   requestingUserId: string;
+  name?: string;
 }
 
 export interface DeployResult {
   deploymentId: string;
+  name?: string;
   status: 'READY' | 'FAILED';
   runtimeToken?: string;  // scoped JWT for runtime access (READY only)
   errorMessage?: string;
@@ -56,6 +54,7 @@ export class ProvisionService {
       tenant,
       artifact,
       input.environment ?? 'production',
+      input.name,
     );
     em.persist(deployment);
     await em.flush();
@@ -68,6 +67,7 @@ export class ProvisionService {
         await em.flush();
         return {
           deploymentId: deployment.id,
+          name: deployment.name,
           status: 'FAILED',
           errorMessage: deployment.errorMessage!,
         };
@@ -93,6 +93,7 @@ export class ProvisionService {
     // 7. Return success result
     return {
       deploymentId: deployment.id,
+      name: deployment.name,
       status: 'READY',
       runtimeToken,
     };
@@ -122,6 +123,18 @@ export class ProvisionService {
     em: EntityManager,
   ): Promise<Deployment | null> {
     return em.findOne(Deployment, { id: deploymentId, tenant: tenantId });
+  }
+
+  async findByName(
+    name: string,
+    tenantId: string,
+    em: EntityManager,
+  ): Promise<Deployment | null> {
+    return em.findOne(
+      Deployment,
+      { name, tenant: tenantId },
+      { populate: ['artifact'] },
+    );
   }
 
   async listDeployments(

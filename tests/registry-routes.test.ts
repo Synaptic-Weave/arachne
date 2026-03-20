@@ -24,6 +24,7 @@ const { mockRegistryInstance, mockProvisionInstance } = vi.hoisted(() => {
     deploy: vi.fn(),
     listDeployments: vi.fn(),
     unprovision: vi.fn(),
+    findByName: vi.fn(),
   };
   return { mockRegistryInstance, mockProvisionInstance };
 });
@@ -656,6 +657,107 @@ describe('DELETE /v1/registry/deployments/:id', () => {
       headers: { authorization: `Bearer ${readToken}` },
     });
     expect(res.statusCode).toBe(403);
+  });
+});
+
+// ── POST /v1/registry/deployments with --name query param ───────────────────
+
+describe('POST /v1/registry/deployments with name query param', () => {
+  let app: FastifyInstance;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    app = await buildApp();
+  });
+
+  afterEach(async () => { await app.close(); });
+
+  it('passes name query param to provisionService.deploy', async () => {
+    mockProvisionInstance.deploy.mockResolvedValue({
+      deploymentId: 'deploy-named',
+      name: 'my-custom-name',
+      status: 'READY',
+      runtimeToken: 'rt-token-xyz',
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/registry/deployments/test-org/my-kb/latest?environment=production&name=my-custom-name',
+      headers: {
+        authorization: `Bearer ${deployToken}`,
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(mockProvisionInstance.deploy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'my-custom-name',
+      }),
+      expect.anything(),
+    );
+    expect(res.json().name).toBe('my-custom-name');
+  });
+});
+
+// ── GET /v1/registry/deployments/by-name/:name ─────────────────────────────
+
+describe('GET /v1/registry/deployments/by-name/:name', () => {
+  let app: FastifyInstance;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    app = await buildApp();
+  });
+
+  afterEach(async () => { await app.close(); });
+
+  it('returns 200 with deployment when found', async () => {
+    const mockDeployment = {
+      id: 'deploy-001',
+      name: 'my-agent-production',
+      status: 'READY',
+      environment: 'production',
+      runtimeToken: 'rt-token-xyz',
+      artifact: { id: 'art-001', name: 'my-agent', kind: 'Agent' },
+    };
+    mockProvisionInstance.findByName.mockResolvedValue(mockDeployment);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/v1/registry/deployments/by-name/my-agent-production',
+      headers: { authorization: `Bearer ${readToken}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const json = res.json();
+    expect(json.name).toBe('my-agent-production');
+    expect(json.runtimeToken).toBe('rt-token-xyz');
+    expect(mockProvisionInstance.findByName).toHaveBeenCalledWith(
+      'my-agent-production',
+      TENANT_ID,
+      expect.anything(),
+    );
+  });
+
+  it('returns 404 when deployment is not found', async () => {
+    mockProvisionInstance.findByName.mockResolvedValue(null);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/v1/registry/deployments/by-name/nonexistent',
+      headers: { authorization: `Bearer ${readToken}` },
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error).toMatch(/not found/i);
+  });
+
+  it('returns 401 when authorization header is missing', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/v1/registry/deployments/by-name/some-name',
+    });
+    expect(res.statusCode).toBe(401);
   });
 });
 

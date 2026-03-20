@@ -142,13 +142,13 @@ export function registerRegistryRoutes(fastify: FastifyInstance): void {
   // ── POST /v1/registry/deployments/:org/:name/:tag ──────────────────────────
   fastify.post<{
     Params: { org: string; name: string; tag: string };
-    Querystring: { environment?: string };
+    Querystring: { environment?: string; name?: string };
   }>('/v1/registry/deployments/:org/:name/:tag', {
     preHandler: registryAuth('deploy:write', REGISTRY_JWT_SECRET),
   }, async (request, reply) => {
     const registryUser = (request as any).registryUser;
     const { org, name, tag } = request.params;
-    const { environment } = request.query;
+    const { environment, name: deploymentName } = request.query;
 
     const em = request.em;
 
@@ -158,6 +158,7 @@ export function registerRegistryRoutes(fastify: FastifyInstance): void {
         artifactRef: { org, name, tag },
         environment: environment ?? 'production',
         requestingUserId: registryUser.sub ?? registryUser.tenantId,
+        name: deploymentName,
       },
       em,
     );
@@ -175,6 +176,25 @@ export function registerRegistryRoutes(fastify: FastifyInstance): void {
     const deployments = await provisionService.listDeployments(registryUser.tenantId, em);
     return reply.send(deployments);
   });
+
+  // ── GET /v1/registry/deployments/by-name/:name ───────────────────────
+  fastify.get<{ Params: { name: string } }>(
+    '/v1/registry/deployments/by-name/:name',
+    { preHandler: registryAuth('artifact:read', REGISTRY_JWT_SECRET) },
+    async (request, reply) => {
+      const registryUser = (request as any).registryUser;
+      const { name } = request.params;
+      const em = request.em;
+
+      const deployment = await provisionService.findByName(name, registryUser.tenantId, em);
+
+      if (!deployment) {
+        return reply.code(404).send({ error: 'Deployment not found' });
+      }
+
+      return reply.send(deployment);
+    },
+  );
 
   // ── DELETE /v1/registry/deployments/:id ───────────────────────────────────
   fastify.delete<{ Params: { id: string } }>(

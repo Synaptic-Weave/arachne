@@ -14,6 +14,7 @@ export class Deployment {
   tenant!: Tenant;
   artifact!: Artifact;
   environment!: string;
+  name!: string;
   status!: DeploymentStatus;
   runtimeToken!: string | null;
   errorMessage!: string | null;
@@ -25,11 +26,13 @@ export class Deployment {
     tenant: Tenant,
     artifact: Artifact,
     environment: string = 'production',
+    name?: string,
   ) {
     this.id = randomUUID();
     this.tenant = tenant;
     this.artifact = artifact;
     this.environment = environment;
+    this.name = name ?? `${(artifact as any).name}-${environment}`;
     this.status = 'PENDING';
     this.runtimeToken = null;
     this.errorMessage = null;
