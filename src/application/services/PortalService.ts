@@ -53,7 +53,7 @@ export class PortalService {
         role: membership.role,
         tenant_id: tenant.id,
         tenant_name: tenant.name,
-        org_slug: tenant.orgSlug ?? null,
+        org_slug: tenant.orgSlug,
         default_provider_id: tenant.defaultProviderId ?? null,
         provider_config: tenant.providerConfig,
         available_models: tenant.availableModels,

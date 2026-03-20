@@ -8,6 +8,7 @@ import type { EntityManager } from '@mikro-orm/core';
 import { Tenant } from '../../domain/entities/Tenant.js';
 import { ApiKey } from '../../domain/entities/ApiKey.js';
 import { Trace } from '../../domain/entities/Trace.js';
+import { generateOrgSlug } from '../../utils/slug.js';
 import { AdminUser } from '../../domain/entities/AdminUser.js';
 import { BetaSignup } from '../../domain/entities/BetaSignup.js';
 import { Settings } from '../../domain/entities/Settings.js';
@@ -156,6 +157,7 @@ export class AdminService {
     const now = new Date();
     const tenant = repo.create({
       name,
+      orgSlug: generateOrgSlug(name),
       status: 'active',
       createdAt: now,
       updatedAt: now,

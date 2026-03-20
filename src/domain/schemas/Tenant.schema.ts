@@ -10,7 +10,7 @@ export const TenantSchema = new EntitySchema<Tenant>({
   properties: {
     id: { type: 'uuid', primary: true },
     name: { type: 'string', columnType: 'varchar(255)' },
-    orgSlug: { type: 'string', columnType: 'varchar(100)', fieldName: 'org_slug', nullable: true },
+    orgSlug: { type: 'string', columnType: 'varchar(100)', fieldName: 'org_slug' },
     parentId: { type: 'uuid', fieldName: 'parent_id', nullable: true },
     providerConfig: { type: 'json', fieldName: 'provider_config', nullable: true },
     systemPrompt: { type: 'text', fieldName: 'system_prompt', nullable: true },

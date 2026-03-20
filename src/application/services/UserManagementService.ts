@@ -72,7 +72,7 @@ export class UserManagementService {
     await this.assignUniqueSlug(tenant);
     await this.em.flush();
 
-    const token = signJwt({ sub: user.id, tenantId: tenant.id, role: 'owner', scopes: TENANT_OWNER_SCOPES, orgSlug: tenant.orgSlug ?? null }, PORTAL_JWT_SECRET, 86_400_000);
+    const token = signJwt({ sub: user.id, tenantId: tenant.id, role: 'owner', scopes: TENANT_OWNER_SCOPES, orgSlug: tenant.orgSlug }, PORTAL_JWT_SECRET, 86_400_000);
     return { token, userId: user.id, tenantId: tenant.id, email: user.email, tenantName: tenant.name };
   }
 
@@ -176,7 +176,7 @@ export class UserManagementService {
 
       await this.em.flush();
 
-      const token = signJwt({ sub: user.id, tenantId: tenant.id, role: 'owner', scopes: TENANT_OWNER_SCOPES, orgSlug: tenant.orgSlug ?? null }, PORTAL_JWT_SECRET, 86_400_000);
+      const token = signJwt({ sub: user.id, tenantId: tenant.id, role: 'owner', scopes: TENANT_OWNER_SCOPES, orgSlug: tenant.orgSlug }, PORTAL_JWT_SECRET, 86_400_000);
       return {
         token,
         userId: user.id,
@@ -236,7 +236,7 @@ export class UserManagementService {
     await this.em.flush();
 
     const inviteScopes = role === 'owner' ? TENANT_OWNER_SCOPES : TENANT_MEMBER_SCOPES;
-    const token = signJwt({ sub: user.id, tenantId: tenant.id, role, scopes: inviteScopes, orgSlug: tenant.orgSlug ?? null }, PORTAL_JWT_SECRET, 86_400_000);
+    const token = signJwt({ sub: user.id, tenantId: tenant.id, role, scopes: inviteScopes, orgSlug: tenant.orgSlug }, PORTAL_JWT_SECRET, 86_400_000);
     return {
       token,
       userId: user.id,
@@ -282,7 +282,7 @@ export class UserManagementService {
     }));
 
     const switchScopes = membership.role === 'owner' ? TENANT_OWNER_SCOPES : TENANT_MEMBER_SCOPES;
-    const token = signJwt({ sub: userId, tenantId: newTenantId, role: membership.role, scopes: switchScopes, orgSlug: tenant.orgSlug ?? null }, PORTAL_JWT_SECRET, 86_400_000);
+    const token = signJwt({ sub: userId, tenantId: newTenantId, role: membership.role, scopes: switchScopes, orgSlug: tenant.orgSlug }, PORTAL_JWT_SECRET, 86_400_000);
     return {
       token,
       userId: user.id,

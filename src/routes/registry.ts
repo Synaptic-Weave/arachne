@@ -64,7 +64,7 @@ export function registerRegistryRoutes(fastify: FastifyInstance): void {
     const result = await registryService.push(
       {
         tenantId: registryUser.tenantId,
-        org: registryUser.orgSlug ?? registryUser.tenantId,
+        org: registryUser.orgSlug,
         name,
         tag,
         kind,
@@ -83,7 +83,7 @@ export function registerRegistryRoutes(fastify: FastifyInstance): void {
     preHandler: registryAuth('artifact:read', REGISTRY_JWT_SECRET),
   }, async (request, reply) => {
     const registryUser = (request as any).registryUser;
-    const org = (request.query as any).org ?? registryUser.orgSlug ?? registryUser.tenantId;
+    const org = (request.query as any).org ?? registryUser.orgSlug;
     const em = request.em;
 
     const artifacts = await registryService.list(registryUser.tenantId, org, em);
