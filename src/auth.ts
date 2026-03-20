@@ -2,6 +2,10 @@ import { createHash } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { EntityManager } from '@mikro-orm/core';
 import { TenantService } from './application/services/TenantService.js';
+import { verifyJwt } from './auth/jwtUtils.js';
+import { RUNTIME_JWT_SECRET } from './auth/secrets.js';
+import { Deployment } from './domain/entities/Deployment.js';
+import { Tenant } from './domain/entities/Tenant.js';
 
 export interface TenantProviderConfig {
   provider: 'openai' | 'azure' | 'ollama';
@@ -140,6 +144,42 @@ export function registerAuthMiddleware(fastify: FastifyInstance): void {
       });
     }
 
+    // ── Runtime JWT detection ─────────────────────────────────────────────────
+    // If the token looks like a JWT (three dot-separated segments), attempt to
+    // verify it as a runtime token before falling through to the API key path.
+    if (rawKey.split('.').length === 3) {
+      try {
+        const payload = verifyJwt<{
+          tenantId: string;
+          artifactId: string;
+          deploymentId: string;
+          scopes?: string[];
+        }>(rawKey, RUNTIME_JWT_SECRET);
+
+        if (!payload.scopes || !payload.scopes.includes('runtime:access')) {
+          return reply.code(403).send({
+            error: {
+              message: 'Token does not have runtime:access scope.',
+              type: 'invalid_request_error',
+              code: 'insufficient_scope',
+            },
+          });
+        }
+
+        const context = await resolveRuntimeContext(payload, em);
+        if (context) {
+          request.tenant = context;
+          return;
+        }
+        // If context resolution failed (e.g. deployment not READY), fall through
+        // to API key path which will 401 since a JWT is not a valid API key.
+      } catch {
+        // JWT verification failed (expired, bad signature, etc.)
+        // Fall through to API key lookup; if the JWT-shaped string is not a
+        // valid API key either, the normal 401 path handles it.
+      }
+    }
+
     const keyHash = hashApiKey(rawKey);
 
     // LRU cache hit — no DB query needed
@@ -203,4 +243,95 @@ export async function invalidateAllKeysForTenant(tenantId: string, em: EntityMan
   for (const key of keys) {
     tenantCache.invalidate(key.keyHash);
   }
+}
+
+/**
+ * Resolve a TenantContext from a verified runtime JWT payload.
+ *
+ * Loads the deployment + artifact, verifies READY status, then builds a
+ * TenantContext using the artifact metadata for agent config and the tenant
+ * parent chain for provider resolution.
+ */
+async function resolveRuntimeContext(
+  payload: { tenantId: string; artifactId: string; deploymentId: string },
+  em: EntityManager,
+): Promise<TenantContext | null> {
+  const deployment = await em.findOne(Deployment, {
+    id: payload.deploymentId,
+    tenant: payload.tenantId,
+  }, { populate: ['artifact'] });
+
+  if (!deployment || deployment.status !== 'READY') return null;
+
+  const tenant = await em.findOne(Tenant, { id: payload.tenantId });
+  if (!tenant || tenant.status !== 'active') return null;
+
+  // Extract agent spec from artifact metadata (if present)
+  const meta = (deployment.artifact as any)?.metadata ?? {};
+  const systemPrompt: string | undefined = meta.systemPrompt ?? undefined;
+  const skills: any[] | undefined = meta.skills ?? undefined;
+  const mcpEndpoints: any[] | undefined = meta.mcpEndpoints ?? undefined;
+  const model: string | undefined = meta.model ?? undefined;
+
+  // Walk tenant parent chain for provider resolution (mirrors TenantService logic)
+  type ChainEntry = {
+    providerConfig: TenantProviderConfig | null;
+    systemPrompt: string | null;
+    skills: any[] | null;
+    mcpEndpoints: any[] | null;
+  };
+
+  const chain: ChainEntry[] = [
+    {
+      providerConfig: meta.providerConfig ?? null,
+      systemPrompt: systemPrompt ?? null,
+      skills: skills ?? null,
+      mcpEndpoints: mcpEndpoints ?? null,
+    },
+    {
+      providerConfig: tenant.providerConfig,
+      systemPrompt: tenant.systemPrompt,
+      skills: tenant.skills,
+      mcpEndpoints: tenant.mcpEndpoints,
+    },
+  ];
+
+  if (tenant.parentId) {
+    let currentParentId: string | null = tenant.parentId;
+    let hops = 0;
+    while (currentParentId && hops < 10) {
+      const parent = await em.findOne(Tenant, { id: currentParentId });
+      if (!parent) break;
+      chain.push({
+        providerConfig: parent.providerConfig,
+        systemPrompt: parent.systemPrompt,
+        skills: parent.skills,
+        mcpEndpoints: parent.mcpEndpoints,
+      });
+      currentParentId = parent.parentId;
+      hops++;
+    }
+  }
+
+  const resolvedProviderConfig =
+    chain.find((c) => c.providerConfig != null)?.providerConfig ?? undefined;
+  const resolvedSystemPrompt =
+    chain.find((c) => c.systemPrompt != null)?.systemPrompt ?? undefined;
+
+  return {
+    tenantId: tenant.id,
+    name: tenant.name,
+    agentId: payload.deploymentId, // Use deployment ID as virtual agent ID
+    providerConfig: resolvedProviderConfig,
+    agentSystemPrompt: systemPrompt,
+    agentSkills: skills,
+    agentMcpEndpoints: mcpEndpoints,
+    mergePolicies: { system_prompt: 'prepend', skills: 'merge' },
+    resolvedSystemPrompt,
+    agentConfig: {
+      conversations_enabled: meta.conversations_enabled ?? false,
+      conversation_token_limit: meta.conversation_token_limit ?? 4000,
+      conversation_summary_model: meta.conversation_summary_model ?? null,
+    },
+  };
 }

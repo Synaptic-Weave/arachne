@@ -2,15 +2,11 @@ import { randomUUID } from 'node:crypto';
 import type { EntityManager } from '@mikro-orm/core';
 import { signJwt } from '../auth/jwtUtils.js';
 import { REGISTRY_SCOPES } from '../auth/registryScopes.js';
+import { RUNTIME_JWT_SECRET } from '../auth/secrets.js';
 import { RegistryService } from './RegistryService.js';
 import { Deployment } from '../domain/entities/Deployment.js';
 import { Tenant } from '../domain/entities/Tenant.js';
 import { KbChunk } from '../domain/entities/KbChunk.js';
-
-const RUNTIME_JWT_SECRET =
-  process.env.RUNTIME_JWT_SECRET ??
-  process.env.PORTAL_JWT_SECRET ??
-  'unsafe-runtime-secret-change-in-production';
 
 const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
 
