@@ -240,6 +240,7 @@ async function weaveKnowledgeBase(
       provider: embeddingConfig.provider,
       model: embeddingConfig.model,
       dimensions,
+      preprocessingHash,
     },
   };
 

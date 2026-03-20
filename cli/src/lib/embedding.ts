@@ -66,6 +66,13 @@ export function chunkText(text: string, tokenSize: number, overlap: number): str
  * Batches internally at 100 texts per request.
  */
 export async function embedTexts(texts: string[], config: EmbeddingConfig): Promise<number[][]> {
+  if (config.provider !== 'ollama' && !config.apiKey) {
+    throw new Error(
+      `Embedding provider "${config.provider}" requires an API key. ` +
+      `Set it in spec.embedder.apiKey, ARACHNE_EMBED_API_KEY, or SYSTEM_EMBEDDER_API_KEY.`,
+    );
+  }
+
   const BATCH_SIZE = 100;
   const allEmbeddings: number[][] = [];
 
