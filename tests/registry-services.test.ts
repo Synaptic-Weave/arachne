@@ -4,6 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { gzipSync } from 'node:zlib';
 import type { EntityManager } from '@mikro-orm/core';
 import { WeaveService } from '../src/services/WeaveService.js';
 import { RegistryService } from '../src/services/RegistryService.js';
@@ -75,6 +76,35 @@ function makeArtifact(tenant: Tenant, overrides: Partial<Artifact> = {}): Artifa
     tags: [],
     ...overrides,
   });
+}
+
+/**
+ * Build a gzipped tar buffer from an array of files (for test bundles).
+ */
+function buildTestBundle(files: Array<{ path: string; data: Buffer }>): Buffer {
+  const blocks: Buffer[] = [];
+  for (const file of files) {
+    const header = Buffer.alloc(512);
+    header.write(file.path.slice(0, 99), 0, 'utf8');
+    header.write('0000644\0', 100, 'ascii');
+    header.write('0000000\0', 108, 'ascii');
+    header.write('0000000\0', 116, 'ascii');
+    header.write(file.data.length.toString(8).padStart(11, '0') + '\0', 124, 'ascii');
+    header.write(Math.floor(Date.now() / 1000).toString(8).padStart(11, '0') + '\0', 136, 'ascii');
+    header.fill(0x20, 148, 156);
+    header.write('0', 156, 'ascii');
+    header.write('ustar\0', 257, 'ascii');
+    header.write('00', 263, 'ascii');
+    let checksum = 0;
+    for (let i = 0; i < 512; i++) checksum += header[i]!;
+    header.write(checksum.toString(8).padStart(6, '0') + '\0 ', 148, 'ascii');
+    blocks.push(header);
+    const padded = Buffer.alloc(Math.ceil(file.data.length / 512) * 512);
+    file.data.copy(padded);
+    blocks.push(padded);
+  }
+  blocks.push(Buffer.alloc(1024));
+  return gzipSync(Buffer.concat(blocks));
 }
 
 // ── WeaveService ─────────────────────────────────────────────────────────────
@@ -388,6 +418,154 @@ describe('ProvisionService', () => {
 
       expect(result.status).toBe('FAILED');
       expect(result.errorMessage).toBe('Artifact not found');
+    });
+
+    it('extracts agent metadata from spec.json in bundle at deploy time', async () => {
+      const tenant = makeTenant({ id: tenantId });
+      const specJson = {
+        apiVersion: 'arachne-ai.com/v0',
+        kind: 'Agent',
+        metadata: { name: 'test-agent' },
+        spec: {
+          model: 'gpt-4.1-mini',
+          systemPrompt: 'You are a helpful assistant.',
+          knowledgeBaseRef: 'my-kb',
+          conversationsEnabled: true,
+          conversationTokenLimit: 8000,
+        },
+      };
+      const bundleData = buildTestBundle([
+        { path: 'manifest.json', data: Buffer.from(JSON.stringify({ kind: 'Agent', name: 'test-agent' })) },
+        { path: 'spec.json', data: Buffer.from(JSON.stringify(specJson)) },
+      ]);
+      const artifact = makeArtifact(tenant, { kind: 'Agent', bundleData, metadata: {} });
+
+      const mockRegistrySvc = {
+        resolve: vi.fn().mockResolvedValue(artifact),
+      } as unknown as RegistryService;
+      const svc = new ProvisionService(mockRegistrySvc);
+
+      const em = buildMockEm({
+        findOneOrFail: vi.fn().mockResolvedValue(tenant),
+      });
+
+      const result = await svc.deploy(
+        {
+          tenantId,
+          artifactRef: { org: 'myorg', name: 'test-agent', tag: 'latest' },
+          environment: 'production',
+          requestingUserId: 'user-1',
+        },
+        em,
+      );
+
+      expect(result.status).toBe('READY');
+      expect(artifact.metadata.systemPrompt).toBe('You are a helpful assistant.');
+      expect(artifact.metadata.model).toBe('gpt-4.1-mini');
+      expect(artifact.metadata.knowledgeBaseRef).toBe('my-kb');
+      expect(artifact.metadata.conversations_enabled).toBe(true);
+      expect(artifact.metadata.conversation_token_limit).toBe(8000);
+    });
+
+    it('extracts agent metadata from spec.yaml fallback', async () => {
+      const tenant = makeTenant({ id: tenantId });
+      const specYaml = `apiVersion: arachne-ai.com/v0
+kind: Agent
+metadata:
+  name: yaml-agent
+spec:
+  model: gpt-4.1-mini
+  systemPrompt: |
+    You are a YAML-based assistant.
+  knowledgeBaseRef: my-kb
+`;
+      const bundleData = buildTestBundle([
+        { path: 'manifest.json', data: Buffer.from(JSON.stringify({ kind: 'Agent', name: 'yaml-agent' })) },
+        { path: 'spec.yaml', data: Buffer.from(specYaml) },
+      ]);
+      const artifact = makeArtifact(tenant, { kind: 'Agent', bundleData, metadata: {} });
+
+      const mockRegistrySvc = {
+        resolve: vi.fn().mockResolvedValue(artifact),
+      } as unknown as RegistryService;
+      const svc = new ProvisionService(mockRegistrySvc);
+
+      const em = buildMockEm({
+        findOneOrFail: vi.fn().mockResolvedValue(tenant),
+      });
+
+      const result = await svc.deploy(
+        {
+          tenantId,
+          artifactRef: { org: 'myorg', name: 'yaml-agent', tag: 'latest' },
+          environment: 'production',
+          requestingUserId: 'user-1',
+        },
+        em,
+      );
+
+      expect(result.status).toBe('READY');
+      expect(artifact.metadata.systemPrompt).toBe('You are a YAML-based assistant.');
+      expect(artifact.metadata.model).toBe('gpt-4.1-mini');
+      expect(artifact.metadata.knowledgeBaseRef).toBe('my-kb');
+    });
+
+    it('skips metadata extraction for KnowledgeBase artifacts', async () => {
+      const tenant = makeTenant({ id: tenantId });
+      const artifact = makeArtifact(tenant, { kind: 'KnowledgeBase', metadata: {} });
+
+      const mockRegistrySvc = {
+        resolve: vi.fn().mockResolvedValue(artifact),
+      } as unknown as RegistryService;
+      const svc = new ProvisionService(mockRegistrySvc);
+
+      const em = buildMockEm({
+        findOneOrFail: vi.fn().mockResolvedValue(tenant),
+        count: vi.fn().mockResolvedValue(5),
+      });
+
+      await svc.deploy(
+        {
+          tenantId,
+          artifactRef: { org: 'myorg', name: 'my-kb', tag: 'latest' },
+          environment: 'production',
+          requestingUserId: 'user-1',
+        },
+        em,
+      );
+
+      expect(Object.keys(artifact.metadata)).toHaveLength(0);
+    });
+
+    it('deploy succeeds even if bundle extraction fails', async () => {
+      const tenant = makeTenant({ id: tenantId });
+      const artifact = makeArtifact(tenant, {
+        kind: 'Agent',
+        bundleData: Buffer.from('not-a-valid-gzip-bundle'),
+        metadata: {},
+      });
+
+      const mockRegistrySvc = {
+        resolve: vi.fn().mockResolvedValue(artifact),
+      } as unknown as RegistryService;
+      const svc = new ProvisionService(mockRegistrySvc);
+
+      const em = buildMockEm({
+        findOneOrFail: vi.fn().mockResolvedValue(tenant),
+      });
+
+      const result = await svc.deploy(
+        {
+          tenantId,
+          artifactRef: { org: 'myorg', name: 'bad-agent', tag: 'latest' },
+          environment: 'production',
+          requestingUserId: 'user-1',
+        },
+        em,
+      );
+
+      expect(result.status).toBe('READY');
+      expect(Object.keys(artifact.metadata)).toHaveLength(0);
     });
 
     it('returns FAILED when KnowledgeBase artifact has 0 chunks', async () => {
