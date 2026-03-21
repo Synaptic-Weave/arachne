@@ -109,7 +109,7 @@ describe('validateOrgSlug', () => {
 
 // ── extractFileFromTar ────────────────────────────────────────────────────────
 
-import { extractFileFromTar } from '../src/utils/tar.js';
+import { extractFileFromTar, extractFilesFromTar } from '../src/lib/tar.js';
 
 function buildTarHeader(name: string, size: number): Buffer {
   const header = Buffer.alloc(512);
@@ -173,5 +173,46 @@ describe('extractFileFromTar', () => {
     const tar = Buffer.alloc(1024); // two zero blocks
     const result = extractFileFromTar(tar, 'anything');
     expect(result).toBeNull();
+  });
+});
+
+// ── extractFilesFromTar ─────────────────────────────────────────────────────
+
+describe('extractFilesFromTar', () => {
+  it('extracts multiple files in a single pass', () => {
+    const tar = buildTestTar([
+      { path: 'manifest.json', data: Buffer.from('{"chunkCount":2}') },
+      { path: 'chunks/0.json', data: Buffer.from('{"content":"a"}') },
+      { path: 'chunks/1.json', data: Buffer.from('{"content":"b"}') },
+    ]);
+
+    const result = extractFilesFromTar(tar, ['manifest.json', 'chunks/0.json', 'chunks/1.json']);
+    expect(result.size).toBe(3);
+    expect(result.get('manifest.json')!.toString('utf8')).toBe('{"chunkCount":2}');
+    expect(result.get('chunks/0.json')!.toString('utf8')).toBe('{"content":"a"}');
+    expect(result.get('chunks/1.json')!.toString('utf8')).toBe('{"content":"b"}');
+  });
+
+  it('returns empty map when no targets match', () => {
+    const tar = buildTestTar([{ path: 'manifest.json', data: Buffer.from('{}') }]);
+    const result = extractFilesFromTar(tar, ['nonexistent.json']);
+    expect(result.size).toBe(0);
+  });
+
+  it('returns partial results when only some targets are found', () => {
+    const tar = buildTestTar([
+      { path: 'chunks/0.json', data: Buffer.from('data0') },
+    ]);
+
+    const result = extractFilesFromTar(tar, ['chunks/0.json', 'chunks/1.json']);
+    expect(result.size).toBe(1);
+    expect(result.has('chunks/0.json')).toBe(true);
+    expect(result.has('chunks/1.json')).toBe(false);
+  });
+
+  it('returns empty map for empty tar', () => {
+    const tar = Buffer.alloc(1024);
+    const result = extractFilesFromTar(tar, ['anything']);
+    expect(result.size).toBe(0);
   });
 });

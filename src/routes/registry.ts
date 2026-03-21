@@ -6,7 +6,7 @@ import { registryAuth } from '../middleware/registryAuth.js';
 import { RegistryService } from '../services/RegistryService.js';
 import { ProvisionService } from '../services/ProvisionService.js';
 import { EmbeddingAgentService } from '../services/EmbeddingAgentService.js';
-import { extractFileFromTar } from '../utils/tar.js';
+import { extractFileFromTar, extractFilesFromTar } from '../lib/tar.js';
 import { Tenant } from '../domain/entities/Tenant.js';
 
 const REGISTRY_JWT_SECRET =
@@ -77,19 +77,32 @@ export function registerRegistryRoutes(fastify: FastifyInstance): void {
 
     if (kind === 'KnowledgeBase' && bundleBuffer) {
       try {
-        const tarBuf = gunzipSync(bundleBuffer);
+        const MAX_CHUNKS = 100_000;
+        const tarBuf = gunzipSync(bundleBuffer, { maxOutputLength: 500 * 1024 * 1024 });
         const manifestData = extractFileFromTar(tarBuf, 'manifest.json');
         if (manifestData) {
           const manifest = JSON.parse(manifestData.toString('utf8'));
-          const count = manifest.chunkCount ?? 0;
-          chunks = [];
+          const count = Math.min(manifest.chunkCount ?? 0, MAX_CHUNKS);
+          const targetNames = Array.from({ length: count }, (_, i) => `chunks/${i}.json`);
+          const chunkFiles = extractFilesFromTar(tarBuf, targetNames);
+
+          const extracted: Array<{ content: string; embedding: number[]; sourcePath: string; tokenCount: number }> = [];
+          let allValid = true;
           for (let i = 0; i < count; i++) {
-            const chunkData = extractFileFromTar(tarBuf, `chunks/${i}.json`);
-            if (chunkData) {
-              chunks.push(JSON.parse(chunkData.toString('utf8')));
+            const chunkData = chunkFiles.get(`chunks/${i}.json`);
+            if (!chunkData) { allValid = false; break; }
+            try {
+              extracted.push(JSON.parse(chunkData.toString('utf8')));
+            } catch {
+              allValid = false;
+              break;
             }
           }
-          chunkCount = count;
+
+          if (allValid && extracted.length === count) {
+            chunks = extracted;
+            chunkCount = count;
+          }
         }
       } catch {
         // If decompression or parsing fails, proceed without chunks
