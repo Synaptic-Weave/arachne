@@ -16,6 +16,7 @@ export class Deployment {
   environment!: string;
   name!: string;
   status!: DeploymentStatus;
+  tokenVersion!: number;
   runtimeToken!: string | null;
   errorMessage!: string | null;
   deployedAt!: Date | null;
@@ -34,6 +35,7 @@ export class Deployment {
     this.environment = environment;
     this.name = name ?? `${(artifact as any).name}-${environment}`;
     this.status = 'PENDING';
+    this.tokenVersion = 1;
     this.runtimeToken = null;
     this.errorMessage = null;
     this.deployedAt = null;

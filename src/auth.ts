@@ -153,6 +153,7 @@ export function registerAuthMiddleware(fastify: FastifyInstance): void {
           tenantId: string;
           artifactId: string;
           deploymentId: string;
+          tokenVersion?: number;
           scopes?: string[];
         }>(rawKey, RUNTIME_JWT_SECRET);
 
@@ -253,7 +254,7 @@ export async function invalidateAllKeysForTenant(tenantId: string, em: EntityMan
  * parent chain for provider resolution.
  */
 async function resolveRuntimeContext(
-  payload: { tenantId: string; artifactId: string; deploymentId: string },
+  payload: { tenantId: string; artifactId: string; deploymentId: string; tokenVersion?: number },
   em: EntityManager,
 ): Promise<TenantContext | null> {
   const deployment = await em.findOne(Deployment, {
@@ -262,6 +263,12 @@ async function resolveRuntimeContext(
   }, { populate: ['artifact'] });
 
   if (!deployment || deployment.status !== 'READY') return null;
+
+  // Reject tokens whose tokenVersion doesn't match (rotated tokens).
+  // Tokens minted before this change won't have tokenVersion, so allow them through.
+  if (payload.tokenVersion !== undefined && payload.tokenVersion !== deployment.tokenVersion) {
+    return null;
+  }
 
   const tenant = await em.findOne(Tenant, { id: payload.tenantId });
   if (!tenant || tenant.status !== 'active') return null;

@@ -13,6 +13,7 @@ export const DeploymentSchema = new EntitySchema<Deployment>({
     environment: { type: 'string', columnType: 'varchar(50)', default: 'production' },
     name: { type: 'string', columnType: 'varchar(200)' },
     status: { type: 'string', columnType: 'varchar(50)', default: 'PENDING' },
+    tokenVersion: { type: 'number', fieldName: 'token_version', default: 1 },
     runtimeToken: { type: 'text', fieldName: 'runtime_token', nullable: true },
     errorMessage: { type: 'text', fieldName: 'error_message', nullable: true },
     deployedAt: { type: 'Date', fieldName: 'deployed_at', nullable: true },

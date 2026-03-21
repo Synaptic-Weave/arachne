@@ -39,6 +39,11 @@ function mintRuntimeToken(
   );
 }
 
+// Simulated deployment store for tokenVersion validation
+const DEPLOYMENT_TOKEN_VERSIONS: Record<string, number> = {
+  [TEST_DEPLOYMENT_ID]: 1,
+};
+
 // Build a test gateway that mirrors the real auth middleware's runtime JWT path
 function buildRuntimeAuthGateway(port: number): FastifyInstance {
   const app = Fastify({ logger: false });
@@ -71,6 +76,7 @@ function buildRuntimeAuthGateway(port: number): FastifyInstance {
           tenantId: string;
           artifactId: string;
           deploymentId: string;
+          tokenVersion?: number;
           scopes?: string[];
         };
 
@@ -84,14 +90,24 @@ function buildRuntimeAuthGateway(port: number): FastifyInstance {
           });
         }
 
-        // Simulate successful runtime context resolution
-        (request as any).tenant = {
-          tenantId: payload.tenantId,
-          name: 'Runtime Tenant',
-          agentId: payload.deploymentId,
-          mergePolicies: { system_prompt: 'prepend', skills: 'merge' },
-        };
-        return;
+        // Validate tokenVersion (mirrors resolveRuntimeContext in src/auth.ts)
+        const currentVersion = DEPLOYMENT_TOKEN_VERSIONS[payload.deploymentId];
+        if (
+          payload.tokenVersion !== undefined &&
+          currentVersion !== undefined &&
+          payload.tokenVersion !== currentVersion
+        ) {
+          // Token has been rotated; fall through to API key path (will 401)
+        } else {
+          // Simulate successful runtime context resolution
+          (request as any).tenant = {
+            tenantId: payload.tenantId,
+            name: 'Runtime Tenant',
+            agentId: payload.deploymentId,
+            mergePolicies: { system_prompt: 'prepend', skills: 'merge' },
+          };
+          return;
+        }
       } catch {
         // JWT verification failed, fall through to API key path
       }
@@ -339,5 +355,96 @@ describe('runtime-auth: API key auth regression', () => {
     });
 
     expect(res.status).toBe(401);
+  });
+});
+
+describe('runtime-auth: tokenVersion invalidation', () => {
+  let app: FastifyInstance;
+  const PORT = 3044;
+
+  beforeAll(async () => {
+    // Reset deployment token version to 1 for this test suite
+    DEPLOYMENT_TOKEN_VERSIONS[TEST_DEPLOYMENT_ID] = 1;
+    app = buildRuntimeAuthGateway(PORT);
+    await app.listen({ port: PORT, host: '127.0.0.1' });
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it('token with matching tokenVersion is accepted', async () => {
+    const token = mintRuntimeToken({ tokenVersion: 1 });
+
+    const res = await fetch(`http://127.0.0.1:${PORT}/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ model: 'gpt-4', messages: [] }),
+    });
+
+    expect(res.status).toBe(200);
+  });
+
+  it('token with old tokenVersion is rejected after rotation', async () => {
+    // Simulate rotation: deployment now at version 2
+    DEPLOYMENT_TOKEN_VERSIONS[TEST_DEPLOYMENT_ID] = 2;
+
+    const oldToken = mintRuntimeToken({ tokenVersion: 1 });
+
+    const res = await fetch(`http://127.0.0.1:${PORT}/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${oldToken}`,
+      },
+      body: JSON.stringify({ model: 'gpt-4', messages: [] }),
+    });
+
+    expect(res.status).toBe(401);
+  });
+
+  it('token with new tokenVersion is accepted after rotation', async () => {
+    // deployment is at version 2 from previous test
+    const newToken = mintRuntimeToken({ tokenVersion: 2 });
+
+    const res = await fetch(`http://127.0.0.1:${PORT}/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${newToken}`,
+      },
+      body: JSON.stringify({ model: 'gpt-4', messages: [] }),
+    });
+
+    expect(res.status).toBe(200);
+  });
+
+  it('token without tokenVersion is allowed through (backward compatibility)', async () => {
+    // Tokens minted before this change won't have tokenVersion
+    const legacyToken = jwt.sign(
+      {
+        tenantId: TEST_TENANT_ID,
+        artifactId: TEST_ARTIFACT_ID,
+        deploymentId: TEST_DEPLOYMENT_ID,
+        scopes: ['runtime:access'],
+        // no tokenVersion field
+      },
+      TEST_SECRET,
+      { expiresIn: '1h' },
+    );
+
+    const res = await fetch(`http://127.0.0.1:${PORT}/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${legacyToken}`,
+      },
+      body: JSON.stringify({ model: 'gpt-4', messages: [] }),
+    });
+
+    expect(res.status).toBe(200);
   });
 });

@@ -196,6 +196,25 @@ export function registerRegistryRoutes(fastify: FastifyInstance): void {
     },
   );
 
+  // ── POST /v1/registry/deployments/:id/rotate-token ───────────────────────
+  fastify.post<{ Params: { id: string } }>(
+    '/v1/registry/deployments/:id/rotate-token',
+    { preHandler: registryAuth('deploy:write', REGISTRY_JWT_SECRET) },
+    async (request, reply) => {
+      const registryUser = (request as any).registryUser;
+      const { id } = request.params;
+      const em = request.em;
+
+      const result = await provisionService.rotateToken(id, registryUser.tenantId, em);
+
+      if (!result) {
+        return reply.code(404).send({ error: 'Deployment not found or not in READY state' });
+      }
+
+      return reply.send(result);
+    },
+  );
+
   // ── DELETE /v1/registry/deployments/:id ───────────────────────────────────
   fastify.delete<{ Params: { id: string } }>(
     '/v1/registry/deployments/:id',
