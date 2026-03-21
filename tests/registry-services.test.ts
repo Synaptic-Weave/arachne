@@ -626,6 +626,65 @@ spec:
     });
   });
 
+  describe('rotateToken', () => {
+    it('generates a new JWT, updates deployment, and returns it', async () => {
+      const svc = new ProvisionService({} as unknown as RegistryService);
+      const tenant = makeTenant({ id: tenantId });
+      const artifact = makeArtifact(tenant);
+      const deployment = new Deployment(tenant, artifact, 'production');
+      deployment.markReady('old-runtime-token');
+      const oldToken = deployment.runtimeToken;
+
+      const em = buildMockEm({
+        findOne: vi.fn().mockResolvedValue(deployment),
+      });
+
+      const result = await svc.rotateToken(deployment.id, tenantId, em);
+
+      expect(result).not.toBeNull();
+      expect(result!.runtimeToken).toBeTruthy();
+      expect(result!.runtimeToken).not.toBe(oldToken);
+      expect(deployment.runtimeToken).toBe(result!.runtimeToken);
+      expect(em.flush).toHaveBeenCalled();
+
+      // Verify the new token has the correct claims
+      const claims = verifyJwt<{
+        tenantId: string;
+        artifactId: string;
+        deploymentId: string;
+        scopes: string[];
+      }>(result!.runtimeToken, RUNTIME_JWT_SECRET);
+
+      expect(claims.tenantId).toBe(tenantId);
+      expect(claims.artifactId).toBe(artifact.id);
+      expect(claims.deploymentId).toBe(deployment.id);
+      expect(claims.scopes).toContain('runtime:access');
+    });
+
+    it('returns null when deployment is not found', async () => {
+      const svc = new ProvisionService({} as unknown as RegistryService);
+      const em = buildMockEm({ findOne: vi.fn().mockResolvedValue(null) });
+
+      const result = await svc.rotateToken('nonexistent-id', tenantId, em);
+      expect(result).toBeNull();
+    });
+
+    it('returns null when deployment is not in READY state', async () => {
+      const svc = new ProvisionService({} as unknown as RegistryService);
+      const tenant = makeTenant({ id: tenantId });
+      const artifact = makeArtifact(tenant);
+      const deployment = new Deployment(tenant, artifact, 'production');
+      deployment.markFailed('some error');
+
+      const em = buildMockEm({
+        findOne: vi.fn().mockResolvedValue(deployment),
+      });
+
+      const result = await svc.rotateToken(deployment.id, tenantId, em);
+      expect(result).toBeNull();
+    });
+  });
+
   describe('unprovision', () => {
     it('marks deployment failed, clears runtime token, returns true', async () => {
       const svc = new ProvisionService({} as unknown as RegistryService);

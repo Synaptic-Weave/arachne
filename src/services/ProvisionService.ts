@@ -137,6 +137,40 @@ export class ProvisionService {
     return true;
   }
 
+  async rotateToken(
+    deploymentId: string,
+    tenantId: string,
+    em: EntityManager,
+  ): Promise<{ runtimeToken: string } | null> {
+    const deployment = await em.findOne(Deployment, {
+      id: deploymentId,
+      tenant: tenantId,
+    }, { populate: ['artifact'] });
+
+    if (!deployment || deployment.status !== 'READY') return null;
+
+    const artifactId = typeof deployment.artifact === 'string'
+      ? deployment.artifact
+      : deployment.artifact.id;
+
+    const runtimeToken = signJwt(
+      {
+        tenantId,
+        artifactId,
+        deploymentId: deployment.id,
+        scopes: [REGISTRY_SCOPES.RUNTIME_ACCESS],
+      },
+      RUNTIME_JWT_SECRET,
+      ONE_YEAR_MS,
+    );
+
+    deployment.runtimeToken = runtimeToken;
+    deployment.updatedAt = new Date();
+    await em.flush();
+
+    return { runtimeToken };
+  }
+
   async getDeployment(
     deploymentId: string,
     tenantId: string,

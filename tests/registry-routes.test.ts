@@ -25,6 +25,7 @@ const { mockRegistryInstance, mockProvisionInstance } = vi.hoisted(() => {
     listDeployments: vi.fn(),
     unprovision: vi.fn(),
     findByName: vi.fn(),
+    rotateToken: vi.fn(),
   };
   return { mockRegistryInstance, mockProvisionInstance };
 });
@@ -758,6 +759,70 @@ describe('GET /v1/registry/deployments/by-name/:name', () => {
       url: '/v1/registry/deployments/by-name/some-name',
     });
     expect(res.statusCode).toBe(401);
+  });
+});
+
+// ── POST /v1/registry/deployments/:id/rotate-token ──────────────────────────
+
+describe('POST /v1/registry/deployments/:id/rotate-token', () => {
+  let app: FastifyInstance;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    app = await buildApp();
+  });
+
+  afterEach(async () => { await app.close(); });
+
+  it('returns 200 with new runtimeToken on success', async () => {
+    mockProvisionInstance.rotateToken.mockResolvedValue({
+      runtimeToken: 'new-rotated-token',
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/registry/deployments/deploy-001/rotate-token',
+      headers: { authorization: `Bearer ${deployToken}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const json = res.json();
+    expect(json.runtimeToken).toBe('new-rotated-token');
+    expect(mockProvisionInstance.rotateToken).toHaveBeenCalledWith(
+      'deploy-001',
+      TENANT_ID,
+      expect.anything(),
+    );
+  });
+
+  it('returns 404 when deployment is not found or not READY', async () => {
+    mockProvisionInstance.rotateToken.mockResolvedValue(null);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/registry/deployments/nonexistent/rotate-token',
+      headers: { authorization: `Bearer ${deployToken}` },
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error).toMatch(/not found/i);
+  });
+
+  it('returns 401 when authorization header is missing', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/registry/deployments/deploy-001/rotate-token',
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('returns 403 when token lacks deploy:write scope', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/registry/deployments/deploy-001/rotate-token',
+      headers: { authorization: `Bearer ${readToken}` },
+    });
+    expect(res.statusCode).toBe(403);
   });
 });
 
