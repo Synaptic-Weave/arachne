@@ -15,6 +15,12 @@ export interface EmbeddingAgentConfig {
   knowledgeBaseRef?: string;
 }
 
+export interface EmbedTextsResult {
+  embeddings: number[][];
+  model: string;
+  dimensions: number;
+}
+
 /** Dimensions known per well-known model name. */
 const KNOWN_DIMENSIONS: Record<string, number> = {
   'text-embedding-3-small': 1536,
@@ -160,6 +166,81 @@ export class EmbeddingAgentService {
       em.persist(agent);
       await em.flush();
     }
+  }
+
+  /**
+   * Generate embeddings for an array of texts using the resolved embedding provider.
+   * Supports OpenAI (batch via `input` array), Azure, and Ollama (one-at-a-time).
+   */
+  async embedTexts(texts: string[], config: EmbeddingAgentConfig): Promise<EmbedTextsResult> {
+    if (config.provider === 'ollama') {
+      // Ollama does not support batch embedding; loop sequentially
+      const embeddings: number[][] = [];
+      for (const text of texts) {
+        const baseUrl = config.baseUrl ?? 'http://localhost:11434';
+        const resp = await fetch(`${baseUrl}/api/embeddings`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: config.model, prompt: text }),
+        });
+        if (!resp.ok) {
+          const errBody = await resp.text().catch(() => '');
+          throw new Error(`Embedding API error ${resp.status}: ${errBody}`);
+        }
+        const data = (await resp.json()) as any;
+        embeddings.push(data.embedding as number[]);
+      }
+      return {
+        embeddings,
+        model: config.model,
+        dimensions: config.dimensions,
+      };
+    }
+
+    // OpenAI and Azure both support batch via `input` array
+    let url: string;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    let body: object;
+
+    if (config.provider === 'azure') {
+      const baseUrl = config.baseUrl ?? '';
+      if (!baseUrl) {
+        throw new Error('Azure embedding provider requires a baseUrl (e.g., https://<resource>.openai.azure.com)');
+      }
+      const deployment = config.deployment ?? config.model;
+      const apiVersion = config.apiVersion ?? '2024-02-01';
+      url = `${baseUrl}/openai/deployments/${deployment}/embeddings?api-version=${apiVersion}`;
+      headers['api-key'] = config.apiKey ?? '';
+      body = { input: texts };
+    } else {
+      // OpenAI or OpenAI-compatible
+      const baseUrl = config.baseUrl ?? 'https://api.openai.com';
+      url = `${baseUrl}/v1/embeddings`;
+      headers['Authorization'] = `Bearer ${config.apiKey ?? ''}`;
+      body = { model: config.model, input: texts };
+    }
+
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    });
+
+    if (!resp.ok) {
+      const errBody = await resp.text().catch(() => '');
+      throw new Error(`Embedding API error ${resp.status}: ${errBody}`);
+    }
+
+    const data = (await resp.json()) as any;
+    // OpenAI/Azure return { data: [{ embedding: [...], index: N }, ...] }
+    const sorted = (data.data as Array<{ embedding: number[]; index: number }>)
+      .sort((a, b) => a.index - b.index);
+
+    return {
+      embeddings: sorted.map((d) => d.embedding),
+      model: config.model,
+      dimensions: config.dimensions,
+    };
   }
 
   /**

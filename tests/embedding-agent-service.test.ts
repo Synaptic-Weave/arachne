@@ -416,3 +416,37 @@ describe('EmbeddingAgentService.resolveEmbedder — provider ref', () => {
     expect(config.baseUrl).toBeUndefined();
   });
 });
+
+// ── embedTexts validation ──────────────────────────────────────────────────
+
+describe('embedTexts', () => {
+  let service: EmbeddingAgentService;
+
+  beforeEach(() => {
+    service = new EmbeddingAgentService();
+  });
+
+  it('throws when Azure provider has no baseUrl', async () => {
+    await expect(
+      service.embedTexts(['hello'], {
+        provider: 'azure',
+        model: 'text-embedding-3-small',
+        dimensions: 1536,
+        apiKey: 'key',
+        baseUrl: undefined,
+      }),
+    ).rejects.toThrow('Azure embedding provider requires a baseUrl');
+  });
+
+  it('throws when Azure provider has empty baseUrl', async () => {
+    await expect(
+      service.embedTexts(['hello'], {
+        provider: 'azure',
+        model: 'text-embedding-3-small',
+        dimensions: 1536,
+        apiKey: 'key',
+        baseUrl: '',
+      }),
+    ).rejects.toThrow('Azure embedding provider requires a baseUrl');
+  });
+});

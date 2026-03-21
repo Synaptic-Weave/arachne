@@ -2,10 +2,14 @@ import { Command } from 'commander';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, readdirSync } from 'fs';
 import { resolve, basename, dirname, join, extname } from 'path';
 import { createHash } from 'crypto';
+import { createInterface } from 'node:readline';
 import { gzipSync } from 'zlib';
 import { chunkText, embedTexts, computePreprocessingHash, getDimensions } from '../lib/embedding.js';
 import { buildTar } from '../lib/tar.js';
+import { discoverEmbeddingProviders, embedViaGateway } from '../lib/gateway-embeddings.js';
+import { getGatewayUrl, getToken } from '../config.js';
 import type { EmbeddingConfig } from '../lib/embedding.js';
+import type { GatewayEmbeddingProvider } from '../lib/gateway-embeddings.js';
 
 interface SpecFields {
   kind: string;
@@ -94,8 +98,9 @@ function collectDocs(dir: string): Array<{ path: string; content: string }> {
 
 /**
  * Resolve embedding config from spec, env vars, or system fallback.
+ * Returns null if no local config is found (caller should try gateway).
  */
-function resolveEmbeddingConfig(specEmbedder?: SpecFields['embedder']): EmbeddingConfig {
+export function resolveEmbeddingConfig(specEmbedder?: SpecFields['embedder']): EmbeddingConfig | null {
   // Priority 1: spec.embedder fields
   if (specEmbedder?.provider && specEmbedder?.model) {
     return {
@@ -124,9 +129,56 @@ function resolveEmbeddingConfig(specEmbedder?: SpecFields['embedder']): Embeddin
     return { provider: sProvider, model: sModel, apiKey: sKey };
   }
 
-  throw new Error(
-    'No embedding provider configured. Set spec.embedder, ARACHNE_EMBED_PROVIDER/MODEL, or SYSTEM_EMBEDDER_PROVIDER/MODEL.',
-  );
+  return null;
+}
+
+/**
+ * Prompt user to select from multiple gateway embedding providers.
+ */
+function promptProviderSelection(providers: GatewayEmbeddingProvider[]): Promise<GatewayEmbeddingProvider> {
+  return new Promise((resolve) => {
+    console.log('No local embedding config found. Available providers on gateway:');
+    for (let i = 0; i < providers.length; i++) {
+      const p = providers[i];
+      console.log(`  ${i + 1}. ${p.name} (${p.provider} / ${p.model})`);
+    }
+
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    rl.question(`Select provider [1]: `, (answer) => {
+      rl.close();
+      const idx = answer.trim() ? parseInt(answer.trim(), 10) - 1 : 0;
+      const selected = providers[idx] ?? providers[0];
+      resolve(selected);
+    });
+  });
+}
+
+/**
+ * Try to resolve a gateway embedding provider.
+ * Returns the selected provider, or null if gateway is unavailable or has no providers.
+ */
+async function resolveGatewayProvider(): Promise<{ gatewayUrl: string; token: string; provider: GatewayEmbeddingProvider } | null> {
+  let gatewayUrl: string;
+  let token: string;
+  try {
+    gatewayUrl = getGatewayUrl();
+    token = getToken();
+  } catch {
+    return null;
+  }
+
+  const providers = await discoverEmbeddingProviders(gatewayUrl, token);
+  if (providers.length === 0) return null;
+
+  let selected: GatewayEmbeddingProvider;
+  if (providers.length === 1) {
+    selected = providers[0];
+    console.log(`No local embedding config found. Using gateway provider: ${selected.name} (${selected.provider} / ${selected.model})`);
+  } else {
+    selected = await promptProviderSelection(providers);
+  }
+
+  return { gatewayUrl, token, provider: selected };
 }
 
 export const weaveCommand = new Command('weave')
@@ -205,20 +257,49 @@ async function weaveKnowledgeBase(
 
   console.log(`${rawChunks.length} chunks`);
 
-  // Resolve embedding config
+  // Resolve embedding config (local first, then gateway fallback)
   const embeddingConfig = resolveEmbeddingConfig(spec.embedder);
 
-  // Embed all chunks
-  console.log(`Embedding ${rawChunks.length} chunks...`);
-  const texts = rawChunks.map((c) => c.content);
-  const embeddings = await embedTexts(texts, embeddingConfig);
+  let embeddings: number[][];
+  let embeddingProvider: string;
+  let embeddingModel: string;
+  let dimensions: number;
 
-  // Infer dimensions from first embedding or use known map
-  const dimensions = embeddings[0]?.length ?? getDimensions(embeddingConfig.model);
+  if (embeddingConfig) {
+    // Local embedding path
+    console.log(`Embedding ${rawChunks.length} chunks...`);
+    const texts = rawChunks.map((c) => c.content);
+    embeddings = await embedTexts(texts, embeddingConfig);
+    embeddingProvider = embeddingConfig.provider;
+    embeddingModel = embeddingConfig.model;
+    dimensions = embeddings[0]?.length ?? getDimensions(embeddingConfig.model);
+  } else {
+    // Priority 4: Gateway provider fallback
+    const gateway = await resolveGatewayProvider();
+    if (!gateway) {
+      console.error(
+        'Error: no embedding provider configured. Set spec.embedder, ARACHNE_EMBED_PROVIDER/MODEL, SYSTEM_EMBEDDER_PROVIDER/MODEL, or log in to a gateway with embedding providers.',
+      );
+      process.exit(1);
+    }
+
+    console.log(`Embedding ${rawChunks.length} chunks via gateway...`);
+    const texts = rawChunks.map((c) => c.content);
+    const BATCH_SIZE = 100;
+    embeddings = [];
+    for (let i = 0; i < texts.length; i += BATCH_SIZE) {
+      const batch = texts.slice(i, i + BATCH_SIZE);
+      const result = await embedViaGateway(gateway.gatewayUrl, gateway.token, batch, gateway.provider.name);
+      embeddings.push(...result.embeddings);
+    }
+    embeddingProvider = gateway.provider.provider;
+    embeddingModel = gateway.provider.model;
+    dimensions = embeddings[0]?.length ?? getDimensions(embeddingModel);
+  }
 
   const preprocessingHash = computePreprocessingHash({
-    provider: embeddingConfig.provider,
-    model: embeddingConfig.model,
+    provider: embeddingProvider,
+    model: embeddingModel,
     tokenSize,
     overlap,
   });
@@ -237,8 +318,8 @@ async function weaveKnowledgeBase(
     version: new Date().toISOString(),
     chunkCount: chunks.length,
     vectorSpace: {
-      provider: embeddingConfig.provider,
-      model: embeddingConfig.model,
+      provider: embeddingProvider,
+      model: embeddingModel,
       dimensions,
       preprocessingHash,
     },
