@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Tenant } from './Tenant.js';
 import type { Artifact } from './Artifact.js';
+import { generateRandomName } from '../../utils/random-names.js';
 
 export type DeploymentStatus = 'PENDING' | 'READY' | 'FAILED';
 
@@ -33,7 +34,7 @@ export class Deployment {
     this.tenant = tenant;
     this.artifact = artifact;
     this.environment = environment;
-    this.name = name ?? `${(artifact as any).name}-${environment}`;
+    this.name = name ?? generateRandomName();
     this.status = 'PENDING';
     this.tokenVersion = 1;
     this.runtimeToken = null;

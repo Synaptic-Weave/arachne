@@ -68,12 +68,14 @@ export class ProvisionService {
       }
     }
 
-    // 3. Create Deployment entity with status PENDING
+    // 3. Create a new deployment (Docker-style: each deploy is a new slot)
     const tenant = await em.findOneOrFail(Tenant, { id: input.tenantId });
+    const environment = input.environment ?? 'production';
+
     const deployment = new Deployment(
       tenant,
       artifact,
-      input.environment ?? 'production',
+      environment,
       input.name,
     );
     em.persist(deployment);

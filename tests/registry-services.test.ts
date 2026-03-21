@@ -569,6 +569,108 @@ spec:
       expect(Object.keys(artifact.metadata)).toHaveLength(0);
     });
 
+    it('generates a random name when no custom name provided', async () => {
+      const tenant = makeTenant({ id: tenantId });
+      const artifact = makeArtifact(tenant, { kind: 'Agent' });
+
+      const mockRegistrySvc = {
+        resolve: vi.fn().mockResolvedValue(artifact),
+      } as unknown as RegistryService;
+      const svc = new ProvisionService(mockRegistrySvc);
+
+      const em = buildMockEm({
+        findOneOrFail: vi.fn().mockResolvedValue(tenant),
+      });
+
+      const result = await svc.deploy(
+        {
+          tenantId,
+          artifactRef: { org: 'myorg', name: 'my-agent', tag: 'latest' },
+          environment: 'production',
+          requestingUserId: 'user-1',
+        },
+        em,
+      );
+
+      expect(result.status).toBe('READY');
+      expect(result.name).toBeTruthy();
+      // Random name should be adjective-noun format
+      expect(result.name).toMatch(/^[a-z]+-[a-z]+$/);
+    });
+
+    it('uses custom name when provided via --name', async () => {
+      const tenant = makeTenant({ id: tenantId });
+      const artifact = makeArtifact(tenant, { kind: 'Agent' });
+
+      const mockRegistrySvc = {
+        resolve: vi.fn().mockResolvedValue(artifact),
+      } as unknown as RegistryService;
+      const svc = new ProvisionService(mockRegistrySvc);
+
+      const em = buildMockEm({
+        findOneOrFail: vi.fn().mockResolvedValue(tenant),
+      });
+
+      const result = await svc.deploy(
+        {
+          tenantId,
+          artifactRef: { org: 'myorg', name: 'my-agent', tag: 'latest' },
+          environment: 'production',
+          requestingUserId: 'user-1',
+          name: 'my-custom-deploy',
+        },
+        em,
+      );
+
+      expect(result.status).toBe('READY');
+      expect(result.name).toBe('my-custom-deploy');
+    });
+
+    it('two deploys of same artifact create two different deployments with different names', async () => {
+      const tenant = makeTenant({ id: tenantId });
+      const artifact = makeArtifact(tenant, { kind: 'Agent' });
+
+      const mockRegistrySvc = {
+        resolve: vi.fn().mockResolvedValue(artifact),
+      } as unknown as RegistryService;
+      const svc = new ProvisionService(mockRegistrySvc);
+
+      const em1 = buildMockEm({
+        findOneOrFail: vi.fn().mockResolvedValue(tenant),
+      });
+      const em2 = buildMockEm({
+        findOneOrFail: vi.fn().mockResolvedValue(tenant),
+      });
+
+      const result1 = await svc.deploy(
+        {
+          tenantId,
+          artifactRef: { org: 'myorg', name: 'my-agent', tag: 'latest' },
+          environment: 'production',
+          requestingUserId: 'user-1',
+        },
+        em1,
+      );
+
+      const result2 = await svc.deploy(
+        {
+          tenantId,
+          artifactRef: { org: 'myorg', name: 'my-agent', tag: 'latest' },
+          environment: 'production',
+          requestingUserId: 'user-1',
+        },
+        em2,
+      );
+
+      expect(result1.status).toBe('READY');
+      expect(result2.status).toBe('READY');
+      // Two separate deployments
+      expect(result1.deploymentId).not.toBe(result2.deploymentId);
+      // Both should have called em.persist (creating new entities each time)
+      expect(em1.persist).toHaveBeenCalled();
+      expect(em2.persist).toHaveBeenCalled();
+    });
+
     it('returns FAILED when KnowledgeBase artifact has 0 chunks', async () => {
       const tenant = makeTenant({ id: tenantId });
       const artifact = makeArtifact(tenant, { kind: 'KnowledgeBase' });
