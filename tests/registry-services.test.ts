@@ -284,6 +284,96 @@ describe('RegistryService', () => {
       expect(result.artifactId).toBe('existing-artifact-id');
       expect(result.ref).toBe('myorg/my-kb:latest');
     });
+
+    it('updates existing artifact on re-push with new content', async () => {
+      const tenant = makeTenant({ id: tenantId });
+      const existingArtifact = makeArtifact(tenant, {
+        id: 'existing-artifact-id',
+        org: 'myorg',
+        name: 'my-kb',
+        sha256: 'old-sha256',
+        bundleData: Buffer.from('old-bundle'),
+        chunkCount: 2,
+        tenant,
+      });
+
+      const em = buildMockEm({
+        findOne: vi.fn()
+          .mockResolvedValueOnce(null)              // SHA idempotency miss
+          .mockResolvedValueOnce(existingArtifact)  // same org/name lookup hits
+          .mockResolvedValueOnce(null),             // _upsertTag check
+      });
+
+      const result = await svc.push(
+        {
+          tenantId,
+          org: 'myorg',
+          name: 'my-kb',
+          tag: 'latest',
+          kind: 'KnowledgeBase',
+          bundleData: Buffer.from('new-bundle'),
+          sha256: 'new-sha256',
+          chunkCount: 5,
+        },
+        em,
+      );
+
+      expect(result.artifactId).toBe('existing-artifact-id');
+      expect(result.ref).toBe('myorg/my-kb:latest');
+      expect(existingArtifact.sha256).toBe('new-sha256');
+      expect(existingArtifact.bundleData).toEqual(Buffer.from('new-bundle'));
+      expect(existingArtifact.chunkCount).toBe(5);
+      expect(em.flush).toHaveBeenCalled();
+    });
+
+    it('replaces old chunks with new ones on re-push', async () => {
+      const tenant = makeTenant({ id: tenantId });
+      const existingArtifact = makeArtifact(tenant, {
+        id: 'existing-artifact-id',
+        org: 'myorg',
+        name: 'my-kb',
+        sha256: 'old-sha256',
+        tenant,
+      });
+      const oldChunk = { id: 'old-chunk-1', content: 'old content' };
+
+      const em = buildMockEm({
+        findOne: vi.fn()
+          .mockResolvedValueOnce(null)              // SHA idempotency miss
+          .mockResolvedValueOnce(existingArtifact)  // same org/name lookup hits
+          .mockResolvedValueOnce(null),             // _upsertTag check
+        find: vi.fn().mockResolvedValue([oldChunk]), // old chunks to remove
+      });
+
+      const result = await svc.push(
+        {
+          tenantId,
+          org: 'myorg',
+          name: 'my-kb',
+          tag: 'latest',
+          kind: 'KnowledgeBase',
+          bundleData: Buffer.from('new-bundle'),
+          sha256: 'new-sha256',
+          chunkCount: 1,
+          chunks: [
+            {
+              content: 'new chunk content',
+              sourcePath: 'doc.md',
+              tokenCount: 10,
+              embedding: [0.1, 0.2],
+            },
+          ],
+        },
+        em,
+      );
+
+      expect(result.artifactId).toBe('existing-artifact-id');
+      // Old chunk should be removed
+      expect(em.remove).toHaveBeenCalledWith(oldChunk);
+      // New chunk should be persisted (artifact persist + new chunk persist)
+      expect(em.persist).toHaveBeenCalled();
+      expect(em.flush).toHaveBeenCalled();
+    });
   });
 
   describe('list', () => {

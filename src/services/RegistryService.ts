@@ -43,7 +43,7 @@ export class RegistryService {
     input: PushInput,
     em: EntityManager,
   ): Promise<{ artifactId: string; ref: string }> {
-    // Idempotency: check for existing artifact by sha256 + tenant
+    // 1. Idempotency: exact same content (SHA match) — just ensure tag exists
     const existing = await em.findOne(Artifact, {
       sha256: input.sha256,
       tenant: input.tenantId,
@@ -59,6 +59,67 @@ export class RegistryService {
       };
     }
 
+    // 2. Check for existing artifact with same org/name for this tenant
+    const sameNameArtifact = await em.findOne(Artifact, {
+      tenant: input.tenantId,
+      org: input.org,
+      name: input.name,
+    });
+
+    if (sameNameArtifact) {
+      // Update existing artifact with new content
+      sameNameArtifact.sha256 = input.sha256;
+      sameNameArtifact.bundleData = input.bundleData;
+      sameNameArtifact.chunkCount = input.chunkCount ?? 0;
+
+      // Update VectorSpace if embedding config changed
+      if (input.kind === 'KnowledgeBase' && input.vectorSpaceData) {
+        if (sameNameArtifact.vectorSpace) {
+          // Update existing VectorSpace in place
+          const vs = sameNameArtifact.vectorSpace;
+          vs.provider = input.vectorSpaceData.provider;
+          vs.model = input.vectorSpaceData.model;
+          vs.dimensions = input.vectorSpaceData.dimensions;
+          vs.preprocessingHash = input.vectorSpaceData.preprocessingHash;
+        } else {
+          const vectorSpace = new VectorSpace(
+            input.vectorSpaceData.provider,
+            input.vectorSpaceData.model,
+            input.vectorSpaceData.dimensions,
+            input.vectorSpaceData.preprocessingHash,
+          );
+          em.persist(vectorSpace);
+          sameNameArtifact.vectorSpace = vectorSpace;
+        }
+      }
+
+      // Delete old chunks and insert new ones
+      const oldChunks = await em.find(KbChunk, { artifact: sameNameArtifact.id });
+      for (const chunk of oldChunks) {
+        em.remove(chunk);
+      }
+
+      if (input.kind === 'KnowledgeBase' && input.chunks && input.chunks.length > 0) {
+        for (const [idx, c] of input.chunks.entries()) {
+          const chunk = new KbChunk(sameNameArtifact, idx, c.content, {
+            sourcePath: c.sourcePath,
+            tokenCount: c.tokenCount,
+            embedding: c.embedding,
+            metadata: c.metadata,
+          });
+          em.persist(chunk);
+        }
+      }
+
+      await this._upsertTag(sameNameArtifact, input.tag, em);
+      await em.flush();
+      return {
+        artifactId: sameNameArtifact.id,
+        ref: `${input.org}/${input.name}:${input.tag}`,
+      };
+    }
+
+    // 3. Brand new artifact — create
     const tenant = await em.findOneOrFail(Tenant, { id: input.tenantId });
 
     // Build optional VectorSpace for KnowledgeBase artifacts
