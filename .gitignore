@@ -7,3 +7,4 @@ coverage/
 .DS_Store
 .claude/
 testrun.txt
+docs/system_specs/monetization.md
