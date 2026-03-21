@@ -1,10 +1,12 @@
 import { createHash } from 'node:crypto';
+import { gunzipSync } from 'node:zlib';
 import { FastifyInstance } from 'fastify';
 import multipart from '@fastify/multipart';
 import { registryAuth } from '../middleware/registryAuth.js';
 import { RegistryService } from '../services/RegistryService.js';
 import { ProvisionService } from '../services/ProvisionService.js';
 import { EmbeddingAgentService } from '../services/EmbeddingAgentService.js';
+import { extractFileFromTar } from '../utils/tar.js';
 import { Tenant } from '../domain/entities/Tenant.js';
 
 const REGISTRY_JWT_SECRET =
@@ -70,6 +72,31 @@ export function registerRegistryRoutes(fastify: FastifyInstance): void {
       return reply.code(403).send({ error: 'Token orgSlug does not match tenant. Please re-login.' });
     }
 
+    // Extract chunks from .orb bundle for KnowledgeBase artifacts
+    let chunks: Array<{ content: string; embedding: number[]; sourcePath: string; tokenCount: number }> | undefined;
+
+    if (kind === 'KnowledgeBase' && bundleBuffer) {
+      try {
+        const tarBuf = gunzipSync(bundleBuffer);
+        const manifestData = extractFileFromTar(tarBuf, 'manifest.json');
+        if (manifestData) {
+          const manifest = JSON.parse(manifestData.toString('utf8'));
+          const count = manifest.chunkCount ?? 0;
+          chunks = [];
+          for (let i = 0; i < count; i++) {
+            const chunkData = extractFileFromTar(tarBuf, `chunks/${i}.json`);
+            if (chunkData) {
+              chunks.push(JSON.parse(chunkData.toString('utf8')));
+            }
+          }
+          chunkCount = count;
+        }
+      } catch {
+        // If decompression or parsing fails, proceed without chunks
+        // (the bundle may be in a legacy format without embedded chunks)
+      }
+    }
+
     const result = await registryService.push(
       {
         tenantId: registryUser.tenantId,
@@ -80,6 +107,7 @@ export function registerRegistryRoutes(fastify: FastifyInstance): void {
         bundleData: bundleBuffer,
         sha256: computedSha256,
         chunkCount,
+        chunks,
       },
       em,
     );

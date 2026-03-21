@@ -5,6 +5,7 @@
  * Auth: uses real registryAuth middleware with JWTs signed against the default dev secret.
  */
 
+import { gzipSync } from 'node:zlib';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Fastify from 'fastify';
 import type { FastifyInstance } from 'fastify';
@@ -1119,5 +1120,151 @@ describe('POST /v1/registry/embeddings', () => {
 
     // deploy:write token lacks artifact:read scope, so 403 is expected
     expect(res.statusCode).toBe(403);
+  });
+});
+
+// ── KB chunk extraction from .orb bundle ──────────────────────────────────────
+
+/**
+ * Minimal tar builder (mirrors the one in WeaveService) for creating test .orb bundles.
+ */
+function buildTarHeader(name: string, size: number): Buffer {
+  const header = Buffer.alloc(512);
+  header.write(name.slice(0, 99), 0, 'utf8');
+  header.write('0000644\0', 100, 'ascii');
+  header.write('0000000\0', 108, 'ascii');
+  header.write('0000000\0', 116, 'ascii');
+  header.write(size.toString(8).padStart(11, '0') + '\0', 124, 'ascii');
+  header.write(Math.floor(Date.now() / 1000).toString(8).padStart(11, '0') + '\0', 136, 'ascii');
+  header.fill(0x20, 148, 156);
+  header.write('0', 156, 'ascii');
+  header.write('ustar\0', 257, 'ascii');
+  header.write('00', 263, 'ascii');
+  let checksum = 0;
+  for (let i = 0; i < 512; i++) checksum += header[i];
+  header.write(checksum.toString(8).padStart(6, '0') + '\0 ', 148, 'ascii');
+  return header;
+}
+
+function buildTar(files: Array<{ path: string; data: Buffer }>): Buffer {
+  const blocks: Buffer[] = [];
+  for (const file of files) {
+    blocks.push(buildTarHeader(file.path, file.data.length));
+    const padded = Buffer.alloc(Math.ceil(file.data.length / 512) * 512);
+    file.data.copy(padded);
+    blocks.push(padded);
+  }
+  blocks.push(Buffer.alloc(1024));
+  return Buffer.concat(blocks);
+}
+
+function buildOrbBundle(chunkCount: number): Buffer {
+  const manifest = { kind: 'KnowledgeBase', name: 'test-kb', chunkCount, vectorSpace: {} };
+  const files: Array<{ path: string; data: Buffer }> = [
+    { path: 'manifest.json', data: Buffer.from(JSON.stringify(manifest)) },
+  ];
+  for (let i = 0; i < chunkCount; i++) {
+    files.push({
+      path: `chunks/${i}.json`,
+      data: Buffer.from(JSON.stringify({
+        content: `Chunk ${i} content`,
+        embedding: [0.1 * i, 0.2 * i],
+        sourcePath: `doc-${i}.md`,
+        tokenCount: 100 + i,
+      })),
+    });
+  }
+  return gzipSync(buildTar(files));
+}
+
+describe('POST /v1/registry/push (KB chunk extraction)', () => {
+  let app: FastifyInstance;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    app = await buildApp();
+  });
+
+  afterEach(async () => { await app.close(); });
+
+  it('extracts chunks from KB .orb bundle and passes them to registryService.push', async () => {
+    mockRegistryInstance.push.mockResolvedValue({ artifactId: 'art-kb-001', ref: 'test-org/my-kb:latest' });
+
+    const orbBuffer = buildOrbBundle(3);
+    const { body, boundary } = buildMultipart({ name: 'my-kb', kind: 'KnowledgeBase', tag: 'latest' }, orbBuffer);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/registry/push',
+      headers: {
+        authorization: `Bearer ${pushToken}`,
+        'content-type': `multipart/form-data; boundary=${boundary}`,
+      },
+      payload: body,
+    });
+
+    expect(res.statusCode).toBe(201);
+
+    // Verify registryService.push was called with chunks extracted from the bundle
+    expect(mockRegistryInstance.push).toHaveBeenCalledTimes(1);
+    const pushInput = mockRegistryInstance.push.mock.calls[0][0];
+    expect(pushInput.chunks).toHaveLength(3);
+    expect(pushInput.chunkCount).toBe(3);
+    expect(pushInput.chunks[0]).toEqual(expect.objectContaining({
+      content: 'Chunk 0 content',
+      sourcePath: 'doc-0.md',
+      tokenCount: 100,
+    }));
+    expect(pushInput.chunks[2]).toEqual(expect.objectContaining({
+      content: 'Chunk 2 content',
+      sourcePath: 'doc-2.md',
+      tokenCount: 102,
+    }));
+  });
+
+  it('does not attempt chunk extraction for non-KB artifacts', async () => {
+    mockRegistryInstance.push.mockResolvedValue({ artifactId: 'art-agent-001', ref: 'test-org/my-agent:latest' });
+
+    const { body, boundary } = buildMultipart({ name: 'my-agent', kind: 'Agent', tag: 'latest' });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/registry/push',
+      headers: {
+        authorization: `Bearer ${pushToken}`,
+        'content-type': `multipart/form-data; boundary=${boundary}`,
+      },
+      payload: body,
+    });
+
+    expect(res.statusCode).toBe(201);
+
+    const pushInput = mockRegistryInstance.push.mock.calls[0][0];
+    expect(pushInput.chunks).toBeUndefined();
+  });
+
+  it('gracefully handles non-gzip bundle data for KB kind (legacy format)', async () => {
+    mockRegistryInstance.push.mockResolvedValue({ artifactId: 'art-legacy', ref: 'test-org/my-kb:latest' });
+
+    // Send plain (non-gzip) data as bundle
+    const { body, boundary } = buildMultipart(
+      { name: 'my-kb', kind: 'KnowledgeBase', tag: 'latest' },
+      Buffer.from('not-a-gzip-file'),
+    );
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/registry/push',
+      headers: {
+        authorization: `Bearer ${pushToken}`,
+        'content-type': `multipart/form-data; boundary=${boundary}`,
+      },
+      payload: body,
+    });
+
+    // Should still succeed (chunks extraction fails gracefully)
+    expect(res.statusCode).toBe(201);
+    const pushInput = mockRegistryInstance.push.mock.calls[0][0];
+    expect(pushInput.chunks).toBeUndefined();
   });
 });
