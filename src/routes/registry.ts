@@ -4,6 +4,7 @@ import multipart from '@fastify/multipart';
 import { registryAuth } from '../middleware/registryAuth.js';
 import { RegistryService } from '../services/RegistryService.js';
 import { ProvisionService } from '../services/ProvisionService.js';
+import { EmbeddingAgentService } from '../services/EmbeddingAgentService.js';
 import { Tenant } from '../domain/entities/Tenant.js';
 
 const REGISTRY_JWT_SECRET =
@@ -16,6 +17,7 @@ export function registerRegistryRoutes(fastify: FastifyInstance): void {
 
   const registryService = new RegistryService();
   const provisionService = new ProvisionService(registryService);
+  const embeddingService = new EmbeddingAgentService();
 
   // ── POST /v1/registry/push ─────────────────────────────────────────────────
   fastify.post('/v1/registry/push', {
@@ -231,6 +233,56 @@ export function registerRegistryRoutes(fastify: FastifyInstance): void {
       }
 
       return reply.send({ success: true });
+    },
+  );
+
+  // ── GET /v1/registry/embedding-providers ──────────────────────────────────
+  fastify.get('/v1/registry/embedding-providers', {
+    preHandler: registryAuth('artifact:read', REGISTRY_JWT_SECRET),
+  }, async (request, reply) => {
+    const registryUser = (request as any).registryUser;
+    const em = request.em;
+
+    try {
+      const config = await embeddingService.resolveEmbedder(undefined, registryUser.tenantId, em);
+      return reply.send({
+        providers: [
+          {
+            name: 'system-embedder',
+            provider: config.provider,
+            model: config.model,
+          },
+        ],
+      });
+    } catch {
+      // No embedder configured: return empty list
+      return reply.send({ providers: [] });
+    }
+  });
+
+  // ── POST /v1/registry/embeddings ──────────────────────────────────────────
+  fastify.post<{ Body: { texts: string[]; provider?: string } }>(
+    '/v1/registry/embeddings',
+    { preHandler: registryAuth('artifact:read', REGISTRY_JWT_SECRET) },
+    async (request, reply) => {
+      const registryUser = (request as any).registryUser;
+      const em = request.em;
+      const { texts, provider } = request.body ?? {} as any;
+
+      if (!Array.isArray(texts) || texts.length === 0) {
+        return reply.code(400).send({ error: 'texts must be a non-empty array of strings' });
+      }
+
+      // Resolve the embedding provider (provider field is currently only "system-embedder" or undefined)
+      const agentRef = (provider && provider !== 'system-embedder') ? provider : undefined;
+      const config = await embeddingService.resolveEmbedder(agentRef, registryUser.tenantId, em);
+      const result = await embeddingService.embedTexts(texts, config);
+
+      return reply.send({
+        embeddings: result.embeddings,
+        model: result.model,
+        dimensions: result.dimensions,
+      });
     },
   );
 }
