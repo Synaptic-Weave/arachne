@@ -1505,6 +1505,20 @@ export function registerPortalRoutes(
       const { Artifact } = await import('../domain/entities/Artifact.js');
       const artifact = await em.findOne(Artifact, { id, tenant: tenantId, kind: 'KnowledgeBase' }, { populate: ['tags'] });
       if (!artifact) return reply.code(404).send({ error: 'Knowledge base not found' });
+      // Check for deployments referencing this artifact
+      const { Deployment } = await import('../domain/entities/Deployment.js');
+      const deployments = await em.find(Deployment, { artifact: artifact.id });
+      if (deployments.length > 0) {
+        return reply.code(409).send({
+          error: `Cannot delete knowledge base: it has ${deployments.length} active deployment(s). Remove them first.`,
+          deployments: deployments.map((d) => ({
+            id: d.id,
+            name: d.name,
+            environment: d.environment,
+            status: d.status,
+          })),
+        });
+      }
       // Remove all chunks then the artifact and its tags
       const { KbChunk } = await import('../domain/entities/KbChunk.js');
       const chunks = await em.find(KbChunk, { artifact: artifact.id });

@@ -306,6 +306,34 @@ describe('DELETE /v1/portal/knowledge-bases/:id', () => {
     expect(res.json<{ error: string }>().error).toContain('not found');
   });
 
+  it('returns 409 when knowledge base has active deployments', async () => {
+    mockEm.findOne.mockResolvedValue(mockKbArtifact);
+    mockEm.find.mockImplementation(async (entity: any) => {
+      if (entity?.name === 'Deployment' || entity?.toString?.().includes('Deployment')) {
+        return [{ id: 'dep-1', name: 'oracle-cards-prod', environment: 'production', status: 'READY' }];
+      }
+      return [];
+    });
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/v1/portal/knowledge-bases/${TEST_KB_ID}`,
+      headers: { authorization: `Bearer ${authToken()}` },
+    });
+
+    expect(res.statusCode).toBe(409);
+    const body = res.json();
+    expect(body.error).toContain('active deployment');
+    expect(body.deployments).toHaveLength(1);
+    expect(body.deployments[0]).toEqual({
+      id: 'dep-1',
+      name: 'oracle-cards-prod',
+      environment: 'production',
+      status: 'READY',
+    });
+    expect(mockEm.flush).not.toHaveBeenCalled();
+  });
+
   it('returns 401 without an auth token', async () => {
     const res = await app.inject({
       method: 'DELETE',
