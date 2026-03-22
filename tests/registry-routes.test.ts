@@ -1020,6 +1020,7 @@ describe('POST /v1/registry/embeddings', () => {
     expect(mockEmbeddingInstance.embedTexts).toHaveBeenCalledWith(
       ['chunk 1', 'chunk 2'],
       expect.objectContaining({ provider: 'openai', model: 'text-embedding-3-small' }),
+      expect.anything(), // request.log
     );
   });
 
