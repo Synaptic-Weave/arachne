@@ -17,6 +17,7 @@ import { WeaveService } from '../src/services/WeaveService.js';
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 const originalFetch = global.fetch;
+const realSetTimeout = globalThis.setTimeout;
 
 function makeEmbeddingResponse(count: number) {
   return {
@@ -96,13 +97,13 @@ describe('WeaveService.embedTexts — rate-limit batching', () => {
       return makeEmbeddingResponse(body.input.length);
     });
 
-    // Replace setTimeout to resolve immediately
+    // Replace setTimeout to resolve immediately for rate-limit delays
     setTimeoutSpy.mockImplementation(((fn: Function, ms?: number) => {
       if (ms === 60_000) {
         fn();
         return 0 as any;
       }
-      return originalFetch ? (Function.prototype.bind.call(setTimeout, null, fn, ms) as any) : (0 as any);
+      return realSetTimeout(fn as any, ms) as any;
     }) as any);
 
     const result = await service.embedTexts(texts, openaiConfig);
@@ -126,10 +127,10 @@ describe('WeaveService.embedTexts — rate-limit batching', () => {
 
     setTimeoutSpy.mockImplementation(((fn: Function, ms?: number) => {
       if (ms === 60_000) { fn(); return 0 as any; }
-      return 0 as any;
+      return realSetTimeout(fn as any, ms) as any;
     }) as any);
 
-    await service.embedTexts(texts, openaiConfig, undefined, undefined, logger);
+    await service.embedTexts(texts, openaiConfig, logger);
 
     // Logger should have been called with rate-batch progress
     expect(logger.info).toHaveBeenCalled();
@@ -144,7 +145,7 @@ describe('WeaveService.embedTexts — rate-limit batching', () => {
 
     mockFetch.mockResolvedValue(makeEmbeddingResponse(2));
 
-    await service.embedTexts(texts, openaiConfig, undefined, undefined, logger);
+    await service.embedTexts(texts, openaiConfig, logger);
 
     // No rate-batch logging for single batch
     const messages = logger.info.mock.calls.map(([msg]: [string]) => msg);
@@ -176,7 +177,7 @@ describe('WeaveService.embedTexts — rate-limit batching', () => {
 
     setTimeoutSpy.mockImplementation(((fn: Function, ms?: number) => {
       if (ms === 60_000) { fn(); return 0 as any; }
-      return 0 as any;
+      return realSetTimeout(fn as any, ms) as any;
     }) as any);
 
     const result = await service.embedTexts(texts, openaiConfig);

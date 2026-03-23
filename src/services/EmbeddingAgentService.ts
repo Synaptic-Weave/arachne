@@ -203,8 +203,10 @@ export class EmbeddingAgentService {
     }
 
     const API_BATCH_SIZE = 100;
-    const TOKEN_BUDGET = 260_000; // 75% of 350k TPM
-    const RATE_WINDOW_MS = 60_000;
+    const DEFAULT_TOKEN_BUDGET = 260_000;
+    const DEFAULT_RATE_WINDOW_MS = 60_000;
+    const TOKEN_BUDGET = Number.parseInt(process.env.EMBEDDING_TOKEN_BUDGET ?? '', 10) || DEFAULT_TOKEN_BUDGET;
+    const RATE_WINDOW_MS = Number.parseInt(process.env.EMBEDDING_RATE_WINDOW_MS ?? '', 10) || DEFAULT_RATE_WINDOW_MS;
 
     // Group texts into rate-limit windows based on estimated token count
     const rateBatches: string[][] = [];
@@ -228,7 +230,7 @@ export class EmbeddingAgentService {
     for (let rb = 0; rb < rateBatches.length; rb++) {
       if (rb > 0) {
         if (rateBatches.length > 1) {
-          logger?.info(`Embedding rate-limit pause: waiting 60s before batch ${rb + 1}/${rateBatches.length}`);
+          logger?.info(`Embedding rate-limit pause: waiting ${RATE_WINDOW_MS / 1000}s before batch ${rb + 1}/${rateBatches.length}`);
         }
         await new Promise((r) => setTimeout(r, RATE_WINDOW_MS));
       }

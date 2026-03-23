@@ -1582,7 +1582,7 @@ export function registerPortalRoutes(
     const texts = rawChunks.map((c) => c.content);
     let embeddings: number[][];
     try {
-      embeddings = await weaveService.embedTexts(texts, embedderConfig, undefined, undefined, request.log);
+      embeddings = await weaveService.embedTexts(texts, embedderConfig, request.log);
     } catch (err: any) {
       return reply.code(500).send({ error: `Embedding generation failed: ${err.message}` });
     }

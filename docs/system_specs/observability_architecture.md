@@ -194,42 +194,6 @@ Events are organized into categories. Each event has a **visibility** classifica
 | `gateway.queue.depth` | Internal | Periodic (every 10s) | `depth`, `oldestEventAge` | Queue backpressure alerting |
 | `gateway.process.stats` | Internal | Periodic (every 30s) | `heapUsedMb`, `rss`, `eventLoopDelayMs`, `activeRequests` | Process health, memory leak detection |
 
-### 4.11 Agent Messaging
-
-| Event | Visibility | Fires When | Key Fields | Enables |
-|-------|-----------|------------|------------|---------|
-| `agent.message_sent` | Both | Agent sends a message via bus | `sourceAgentId`, `targetAgentId`, `channel`, `correlationId`, `contentLength` | Inter-agent communication tracking |
-| `agent.message_received` | Both | Agent receives and processes a message | `targetAgentId`, `sourceAgentId`, `channel`, `correlationId`, `processingMs` | Message delivery latency |
-| `agent.message_failed` | Both | Message delivery or processing failed | `sourceAgentId`, `targetAgentId`, `error` | Messaging reliability |
-
-### 4.12 Channel Operations
-
-| Event | Visibility | Fires When | Key Fields | Enables |
-|-------|-----------|------------|------------|---------|
-| `channel.created` | Internal | New channel created | `channelName`, `pattern`, `createdBy` | Channel lifecycle tracking |
-| `channel.subscribed` | Internal | Agent subscribes to channel | `channelName`, `agentId` | Subscription tracking |
-| `channel.unsubscribed` | Internal | Agent unsubscribes | `channelName`, `agentId` | Subscription tracking |
-| `channel.message_published` | Internal | Message published to channel | `channelName`, `subscriberCount`, `sourceAgentId` | Channel throughput |
-
-### 4.13 Schedule Execution
-
-| Event | Visibility | Fires When | Key Fields | Enables |
-|-------|-----------|------------|------------|---------|
-| `schedule.triggered` | Both | Cron fires for a schedule | `scheduleId`, `agentId`, `cron`, `mode` | Schedule activity tracking |
-| `schedule.completed` | Both | Scheduled execution finished successfully | `scheduleId`, `agentId`, `executionMs`, `mode` | Schedule performance |
-| `schedule.failed` | Both | Scheduled execution failed | `scheduleId`, `agentId`, `error`, `retryCount` | Schedule reliability |
-| `schedule.skipped` | Internal | Execution skipped (previous still running) | `scheduleId`, `reason` | Concurrency monitoring |
-
-### 4.14 Team Orchestration
-
-| Event | Visibility | Fires When | Key Fields | Enables |
-|-------|-----------|------------|------------|---------|
-| `team.execution_started` | Both | AgentTeam begins processing a request | `teamId`, `pattern`, `memberCount` | Team usage tracking |
-| `team.task_assigned` | Both | Coordinator assigns work to a member agent | `teamId`, `agentId`, `taskType` | Orchestration flow tracking |
-| `team.task_completed` | Both | Member agent completes assigned work | `teamId`, `agentId`, `taskType`, `durationMs` | Per-agent performance within teams |
-| `team.execution_completed` | Both | AgentTeam finishes, returning final response | `teamId`, `pattern`, `totalMs`, `stepsExecuted` | End-to-end team latency |
-| `team.execution_failed` | Both | Team execution failed | `teamId`, `error`, `failedAgentId` | Team reliability |
-
 ---
 
 ## 5. EventBus Interface
@@ -964,25 +928,9 @@ Gateway                    Worker                         PostgreSQL
 - Individual events are independently queryable in TimescaleDB for debugging.
 - The Trace row format can evolve without changing the gateway code — only the worker's assembly logic changes.
 
-### 12.3 Multi-Agent Trace Fields
+### 12.3 Schema Compatibility
 
-The following columns are added to the `traces` table to support team orchestration, scheduling, and parent/child trace correlation:
-
-```sql
-ALTER TABLE traces ADD COLUMN parent_request_id UUID DEFAULT NULL;
-ALTER TABLE traces ADD COLUMN team_id UUID DEFAULT NULL;
-ALTER TABLE traces ADD COLUMN schedule_id UUID DEFAULT NULL;
-```
-
-- `parent_request_id`: links sub-agent traces to the parent team-level trace. When a TeamOrchestrator invokes a sub-agent, the sub-agent's trace carries the team request's ID as its parent.
-- `team_id`: identifies the AgentTeam artifact that orchestrated this request (null for single-agent requests).
-- `schedule_id`: identifies the Schedule entity that triggered this request (null for on-demand requests).
-
-The `TraceAssembler` uses `parentRequestId` to construct hierarchical trace trees for team execution visualization.
-
-### 12.4 Schema Compatibility
-
-The existing `traces` table schema is otherwise unchanged. The worker populates the same columns from event data. Existing Recharts dashboard queries, portal API endpoints, and admin analytics continue to work without modification.
+The existing `traces` table schema is unchanged. The worker populates the same columns from event data. Existing Recharts dashboard queries, portal API endpoints, and admin analytics continue to work without modification.
 
 New fields can be added to `traces` by extracting them from event payloads in the worker, without touching gateway code.
 

@@ -281,48 +281,76 @@ export class WeaveService {
    */
   async embedTexts(
     texts: string[],
+    config: EmbeddingAgentConfig,
+    logger?: { info: (msg: string) => void },
+  ): Promise<number[][]>;
+  async embedTexts(
+    texts: string[],
+    provider: string,
+    model: string,
+    apiKey?: string,
+    logger?: { info: (msg: string) => void },
+  ): Promise<number[][]>;
+  async embedTexts(
+    texts: string[],
     providerOrConfig: string | EmbeddingAgentConfig,
-    model?: string,
+    modelOrLogger?: string | { info: (msg: string) => void },
     apiKey?: string,
     logger?: { info: (msg: string) => void },
   ): Promise<number[][]> {
+    // Resolve overloaded parameters
+    let effectiveLogger = logger;
+    let effectiveModel: string | undefined;
+    if (typeof modelOrLogger === 'object' && modelOrLogger !== null) {
+      effectiveLogger = modelOrLogger;
+    } else {
+      effectiveModel = modelOrLogger;
+    }
+
     // Normalize to config object
     const config: EmbeddingAgentConfig = typeof providerOrConfig === 'string'
-      ? { provider: providerOrConfig, model: model!, dimensions: 0, apiKey }
+      ? { provider: providerOrConfig, model: effectiveModel!, dimensions: 0, apiKey }
       : providerOrConfig;
 
     const API_BATCH_SIZE = 100;
-    const TOKEN_BUDGET = 260_000; // 75% of 350k TPM
-    const RATE_WINDOW_MS = 60_000;
+    const DEFAULT_TOKEN_BUDGET = 260_000;
+    const DEFAULT_RATE_WINDOW_MS = 60_000;
+    const TOKEN_BUDGET = Number.parseInt(process.env.EMBEDDING_TOKEN_BUDGET ?? '', 10) || DEFAULT_TOKEN_BUDGET;
+    const RATE_WINDOW_MS = Number.parseInt(process.env.EMBEDDING_RATE_WINDOW_MS ?? '', 10) || DEFAULT_RATE_WINDOW_MS;
 
-    // Group texts into rate-limit windows based on estimated token count
+    // Group texts into rate-limit windows based on estimated token count.
+    // Ollama is local and has no TPM quota, so skip rate-window splitting.
     const rateBatches: string[][] = [];
-    let current: string[] = [];
-    let currentTokens = 0;
+    if (config.provider === 'ollama') {
+      rateBatches.push(texts);
+    } else {
+      let current: string[] = [];
+      let currentTokens = 0;
 
-    for (const text of texts) {
-      const est = Math.ceil(text.length / 4);
-      if (current.length > 0 && currentTokens + est > TOKEN_BUDGET) {
-        rateBatches.push(current);
-        current = [];
-        currentTokens = 0;
+      for (const text of texts) {
+        const est = Math.ceil(text.length / 4);
+        if (current.length > 0 && currentTokens + est > TOKEN_BUDGET) {
+          rateBatches.push(current);
+          current = [];
+          currentTokens = 0;
+        }
+        current.push(text);
+        currentTokens += est;
       }
-      current.push(text);
-      currentTokens += est;
+      if (current.length > 0) rateBatches.push(current);
     }
-    if (current.length > 0) rateBatches.push(current);
 
     const allEmbeddings: number[][] = [];
 
     for (let rb = 0; rb < rateBatches.length; rb++) {
       if (rb > 0) {
         if (rateBatches.length > 1) {
-          logger?.info(`Embedding rate-limit pause: waiting 60s before batch ${rb + 1}/${rateBatches.length}`);
+          effectiveLogger?.info(`Embedding rate-limit pause: waiting ${RATE_WINDOW_MS / 1000}s before batch ${rb + 1}/${rateBatches.length}`);
         }
         await new Promise((r) => setTimeout(r, RATE_WINDOW_MS));
       }
       if (rateBatches.length > 1) {
-        logger?.info(`Embedding rate-batch ${rb + 1}/${rateBatches.length} (${rateBatches[rb].length} chunks)`);
+        effectiveLogger?.info(`Embedding rate-batch ${rb + 1}/${rateBatches.length} (${rateBatches[rb].length} chunks)`);
       }
 
       const rateBatch = rateBatches[rb];
@@ -336,6 +364,9 @@ export class WeaveService {
 
         if (config.provider === 'azure') {
           const baseUrl = config.baseUrl ?? '';
+          if (!baseUrl) {
+            throw new Error('Azure embedding provider requires a baseUrl (e.g., https://<resource>.openai.azure.com)');
+          }
           const deployment = config.deployment ?? config.model;
           const apiVersion = config.apiVersion ?? '2024-02-01';
           url = `${baseUrl}/openai/deployments/${deployment}/embeddings?api-version=${apiVersion}`;
