@@ -32,7 +32,11 @@ export default function AgentSandbox({ agent, onClose }: AgentSandboxProps) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [model, setModel] = useState('gpt-4o-mini');
+  const modelOptions = (agent.availableModels && agent.availableModels.length > 0)
+    ? agent.availableModels.filter((m: string) => !m.toLowerCase().includes('embedding'))
+    : COMMON_MODELS;
+
+  const [model, setModel] = useState(modelOptions[0] ?? 'gpt-4o-mini');
   const [memoryEnabled, setMemoryEnabled] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -42,11 +46,7 @@ export default function AgentSandbox({ agent, onClose }: AgentSandboxProps) {
   const [kbInfo, setKbInfo] = useState<{ name: string; chunkCount: number; sources: Array<{ sourcePath: string; chunkCount: number }> } | null>(null);
   const [showKbDetail, setShowKbDetail] = useState(false);
 
-  const modelOptions = (agent.availableModels && agent.availableModels.length > 0)
-    ? agent.availableModels
-    : COMMON_MODELS;
-
-  const activeModel = model || 'gpt-4o-mini';
+  const activeModel = model || modelOptions[0] || 'gpt-4o-mini';
 
   // Load KB info if agent has a knowledge base
   const loadKbInfo = useCallback(async () => {
@@ -177,6 +177,7 @@ export default function AgentSandbox({ agent, onClose }: AgentSandboxProps) {
               options={modelOptions}
               placeholder="e.g. gpt-4o"
               disabled={loading}
+              strict={!!(agent.availableModels && agent.availableModels.length > 0)}
             />
           </div>
           {onClose && (
