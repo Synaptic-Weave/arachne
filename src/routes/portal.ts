@@ -37,6 +37,7 @@ export function registerPortalRoutes(
       deployment: cfg['deployment'] ?? null,
       apiVersion: cfg['apiVersion'] ?? null,
       hasApiKey: !!(cfg['apiKey']),
+      gatewayProviderId: cfg['gatewayProviderId'] ?? null,
     };
   }
 
@@ -1060,6 +1061,7 @@ export function registerPortalRoutes(
       };
 
       if (!body.messages || !Array.isArray(body.messages) || body.messages.length === 0) {
+        request.log.warn({ agentId }, '[sandbox-chat] missing or empty messages array');
         return reply.code(400).send({ error: 'messages array is required and must not be empty' });
       }
 
@@ -1074,6 +1076,7 @@ export function registerPortalRoutes(
       const { Agent: AgentEntity } = await import('../domain/entities/Agent.js');
       const agentEntity = await request.em.findOne(AgentEntity, { id: agentId });
       if (!agentEntity?.sandboxKey) {
+        request.log.warn({ agentId }, '[sandbox-chat] agent has no sandbox key');
         return reply.code(400).send({ error: 'Agent has no sandbox key. Re-create the agent or create an API key.' });
       }
 
@@ -1108,6 +1111,10 @@ export function registerPortalRoutes(
       const responseBody = JSON.parse(gatewayResponse.body);
 
       if (gatewayResponse.statusCode >= 400) {
+        request.log.warn(
+          { agentId, status: gatewayResponse.statusCode, responseBody },
+          '[sandbox-chat] gateway returned error',
+        );
         return reply.code(gatewayResponse.statusCode).send(responseBody);
       }
 

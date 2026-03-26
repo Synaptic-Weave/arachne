@@ -11,7 +11,8 @@ async function request<T>(
   body?: unknown,
   token?: string
 ): Promise<T> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const headers: Record<string, string> = {};
+  if (body) headers['Content-Type'] = 'application/json';
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
   const res = await fetch(`${API_BASE}${path}`, {
@@ -20,6 +21,10 @@ async function request<T>(
     body: body ? JSON.stringify(body) : undefined,
   });
 
+  if (res.status === 204) {
+    if (!res.ok) throw new Error('Request failed');
+    return {} as T;
+  }
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || data.message || 'Request failed');
   return data as T;
