@@ -10,6 +10,9 @@ import { User } from '../../domain/entities/User.js';
 import { Tenant } from '../../domain/entities/Tenant.js';
 import { TenantMembership } from '../../domain/entities/TenantMembership.js';
 import { Agent } from '../../domain/entities/Agent.js';
+import { OpenAIProvider } from '../../domain/entities/OpenAIProvider.js';
+import { AzureProvider } from '../../domain/entities/AzureProvider.js';
+import { OllamaProvider } from '../../domain/entities/OllamaProvider.js';
 import { Invite } from '../../domain/entities/Invite.js';
 import { BetaSignup } from '../../domain/entities/BetaSignup.js';
 import { Trace } from '../../domain/entities/Trace.js';
@@ -172,22 +175,64 @@ export class PortalService {
       { orderBy: { createdAt: 'ASC' } },
     );
 
-    return agents.map((a) => ({
-      id: a.id,
-      name: a.name,
-      provider_config: a.providerConfig,
-      system_prompt: a.systemPrompt,
-      skills: a.skills,
-      mcp_endpoints: a.mcpEndpoints,
-      merge_policies: a.mergePolicies,
-      available_models: a.availableModels,
-      conversations_enabled: a.conversationsEnabled,
-      conversation_token_limit: a.conversationTokenLimit,
-      conversation_summary_model: a.conversationSummaryModel,
-      knowledge_base_ref: a.knowledgeBaseRef,
-      created_at: a.createdAt,
-      updated_at: a.updatedAt,
-    }));
+    // Resolve provider available models for agents that don't have their own list.
+    // Collect unique provider IDs, then batch-load them.
+    const providerIds = new Set<string>();
+    for (const a of agents) {
+      if (!a.availableModels || a.availableModels.length === 0) {
+        const pid = this.getAgentProviderId(a);
+        if (pid) providerIds.add(pid);
+      }
+    }
+
+    // Also check for tenant's provider (via providerConfig.gatewayProviderId)
+    const tenant = await this.em.findOne(Tenant, { id: tenantId });
+    const tenantProviderId = this.getTenantProviderId(tenant);
+    if (tenantProviderId) {
+      providerIds.add(tenantProviderId);
+    }
+
+    const providerModelsMap = new Map<string, string[]>();
+    if (providerIds.size > 0) {
+      for (const ProviderClass of [OpenAIProvider, AzureProvider, OllamaProvider]) {
+        const providers = await this.em.find(ProviderClass, { id: { $in: [...providerIds] } });
+        for (const p of providers) {
+          if (p.availableModels && p.availableModels.length > 0) {
+            providerModelsMap.set(p.id, p.availableModels);
+          }
+        }
+      }
+    }
+
+    return agents.map((a) => {
+      // Resolve effective available models: agent's own → agent's provider → tenant default provider
+      let effectiveModels = a.availableModels;
+      if (!effectiveModels || effectiveModels.length === 0) {
+        const pid = this.getAgentProviderId(a);
+        if (pid && providerModelsMap.has(pid)) {
+          effectiveModels = providerModelsMap.get(pid)!;
+        } else if (tenantProviderId && providerModelsMap.has(tenantProviderId)) {
+          effectiveModels = providerModelsMap.get(tenantProviderId)!;
+        }
+      }
+
+      return {
+        id: a.id,
+        name: a.name,
+        provider_config: a.providerConfig,
+        system_prompt: a.systemPrompt,
+        skills: a.skills,
+        mcp_endpoints: a.mcpEndpoints,
+        merge_policies: a.mergePolicies,
+        available_models: effectiveModels,
+        conversations_enabled: a.conversationsEnabled,
+        conversation_token_limit: a.conversationTokenLimit,
+        conversation_summary_model: a.conversationSummaryModel,
+        knowledge_base_ref: a.knowledgeBaseRef,
+        created_at: a.createdAt,
+        updated_at: a.updatedAt,
+      };
+    });
   }
 
   async getAgent(agentId: string, userId: string) {
@@ -201,6 +246,9 @@ export class PortalService {
     });
     if (!membership) return null;
 
+    // Resolve effective available models from provider chain
+    const effectiveModels = await this.resolveAgentAvailableModels(agent);
+
     return {
       id: agent.id,
       name: agent.name,
@@ -209,7 +257,7 @@ export class PortalService {
       skills: agent.skills,
       mcp_endpoints: agent.mcpEndpoints,
       merge_policies: agent.mergePolicies,
-      available_models: agent.availableModels,
+      available_models: effectiveModels,
       conversations_enabled: agent.conversationsEnabled,
       conversation_token_limit: agent.conversationTokenLimit,
       conversation_summary_model: agent.conversationSummaryModel,
@@ -217,6 +265,64 @@ export class PortalService {
       created_at: agent.createdAt,
       updated_at: agent.updatedAt,
     };
+  }
+
+  /**
+   * Extract the effective provider ID from a providerConfig object.
+   */
+  private extractProviderId(cfg: any): string | null {
+    if (cfg && typeof cfg === 'object' && 'gatewayProviderId' in cfg) {
+      return (cfg as Record<string, unknown>).gatewayProviderId as string ?? null;
+    }
+    return null;
+  }
+
+  /**
+   * Extract the effective provider ID for an agent.
+   * Checks agent.providerId first, then falls back to providerConfig.gatewayProviderId.
+   */
+  private getAgentProviderId(agent: Agent): string | null {
+    return this.extractProviderId(agent.providerConfig);
+  }
+
+  /**
+   * Extract the provider ID from a tenant's providerConfig.
+   */
+  private getTenantProviderId(tenant: Tenant | null): string | null {
+    if (!tenant) return null;
+    return this.extractProviderId(tenant.providerConfig);
+  }
+
+  /**
+   * Resolve effective available models for an agent.
+   * Falls back: agent's own list → agent's provider → tenant's provider.
+   */
+  private async resolveAgentAvailableModels(agent: Agent): Promise<string[] | null> {
+    if (agent.availableModels && agent.availableModels.length > 0) {
+      return agent.availableModels;
+    }
+
+    const agentProviderId = this.getAgentProviderId(agent);
+    const providerIds: string[] = [];
+    if (agentProviderId) providerIds.push(agentProviderId);
+
+    const tenantId = (agent.tenant as any)?.id ?? agent.tenant;
+    const tenant = await this.em.findOne(Tenant, { id: tenantId });
+    const tenantProviderId = this.getTenantProviderId(tenant);
+    if (tenantProviderId && tenantProviderId !== agentProviderId) {
+      providerIds.push(tenantProviderId);
+    }
+
+    for (const pid of providerIds) {
+      for (const ProviderClass of [OpenAIProvider, AzureProvider, OllamaProvider]) {
+        const provider = await this.em.findOne(ProviderClass, { id: pid });
+        if (provider?.availableModels && provider.availableModels.length > 0) {
+          return provider.availableModels;
+        }
+      }
+    }
+
+    return null;
   }
 
   async getAgentResolved(agentId: string, userId: string) {
