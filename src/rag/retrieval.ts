@@ -1,6 +1,8 @@
 import type { EntityManager } from '@mikro-orm/core';
 import { EmbeddingAgentService } from '../services/EmbeddingAgentService.js';
 import type { EmbeddingAgentConfig } from '../services/EmbeddingAgentService.js';
+import { VectorSearchRepository } from '../domain/repositories/VectorSearchRepository.js';
+import { KbChunk } from '../domain/entities/KbChunk.js';
 
 export interface RetrievedChunk {
   id: string;
@@ -97,35 +99,16 @@ export async function retrieveChunks(
   // Format as pgvector literal: [0.1, 0.2, ...]
   const vectorLiteral = `[${vector.join(',')}]`;
 
-  // 3. pgvector similarity search via raw SQL
-  const sql = `
-    SELECT id, content, source_path,
-           1 - (embedding <=> ?::vector) AS similarity_score
-    FROM kb_chunks
-    WHERE artifact_id = ?
-    ORDER BY embedding <=> ?::vector
-    LIMIT ?
-  `;
-
-  // Check chunk count for this artifact
-  const countResult = await (em as any).getKnex().raw(
-    'SELECT COUNT(*) as cnt FROM kb_chunks WHERE artifact_id = ?', [artifactId]
-  );
-  const chunkCount = parseInt(countResult.rows?.[0]?.cnt ?? '0', 10);
+  // 3. Check chunk count via em.count()
+  const chunkCount = await em.count(KbChunk, { artifact: artifactId });
   console.log(`[rag:retrieval] artifact ${artifactId} has ${chunkCount} chunks in kb_chunks table`);
 
+  // 4. pgvector similarity search via VectorSearchRepository
+  const vectorRepo = new VectorSearchRepository(em);
   const searchStart = Date.now();
-  const knex = (em as any).getKnex();
-  const result = await knex.raw(sql, [vectorLiteral, artifactId, vectorLiteral, topK]);
+  const rows = await vectorRepo.similaritySearch(artifactId, vectorLiteral, topK);
   const vectorSearchLatencyMs = Date.now() - searchStart;
-  console.log(`[rag:retrieval] vector search completed in ${vectorSearchLatencyMs}ms, ${result.rows?.length ?? 0} results`);
-
-  const rows: Array<{
-    id: string;
-    content: string;
-    source_path: string | null;
-    similarity_score: string;
-  }> = result.rows;
+  console.log(`[rag:retrieval] vector search completed in ${vectorSearchLatencyMs}ms, ${rows.length} results`);
 
   const chunks: RetrievedChunk[] = rows.map((row, index) => ({
     id: row.id,

@@ -99,13 +99,6 @@ export interface SettingsRow {
 export class AdminService {
   constructor(private readonly em: EntityManager) {}
 
-  // rawQuery retained for analytics only
-  private async rawQuery<T extends object>(sql: string, params: unknown[] = []): Promise<{ rows: T[] }> {
-    const knex = (this.em as any).getKnex();
-    const result = await knex.raw(sql, params);
-    return { rows: result.rows as T[] };
-  }
-
   // ── Auth ──────────────────────────────────────────────────────────────────
 
   async validateAdminLogin(

@@ -673,13 +673,18 @@ describe('GET /v1/portal/knowledge-bases/:id/sources', () => {
 
   it('returns source file inventory', async () => {
     mockEm.findOne.mockResolvedValue(mockKbArtifact);
-    const knexRaw = vi.fn().mockResolvedValue({
-      rows: [
-        { source_path: 'doc1.txt', chunk_count: '3', total_tokens: '150' },
-        { source_path: 'doc2.md', chunk_count: '2', total_tokens: '80' },
-      ],
-    });
-    (mockEm as any).getKnex = vi.fn(() => ({ raw: knexRaw }));
+    const mockExecute = vi.fn().mockResolvedValue([
+      { source_path: 'doc1.txt', chunk_count: '3', total_tokens: '150' },
+      { source_path: 'doc2.md', chunk_count: '2', total_tokens: '80' },
+    ]);
+    const mockQb = {
+      select: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      groupBy: vi.fn().mockReturnThis(),
+      orderBy: vi.fn().mockReturnThis(),
+      execute: mockExecute,
+    };
+    (mockEm as any).createQueryBuilder = vi.fn(() => mockQb);
 
     const res = await app.inject({
       method: 'GET',

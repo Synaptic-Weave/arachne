@@ -11,8 +11,14 @@ vi.mock('../src/services/EmbeddingAgentService.js', () => ({
   EmbeddingAgentService: vi.fn(),
 }));
 
+// Mock VectorSearchRepository to intercept pgvector queries
+vi.mock('../src/domain/repositories/VectorSearchRepository.js', () => ({
+  VectorSearchRepository: vi.fn(),
+}));
+
 import { retrieveChunks, buildRagContext } from '../src/rag/retrieval.js';
 import { EmbeddingAgentService } from '../src/services/EmbeddingAgentService.js';
+import { VectorSearchRepository } from '../src/domain/repositories/VectorSearchRepository.js';
 
 const MOCK_EMBED_CONFIG = {
   provider: 'openai',
@@ -21,14 +27,11 @@ const MOCK_EMBED_CONFIG = {
   apiKey: 'sk-test',
 };
 
-function buildMockKnex(rows: unknown[] = []) {
-  return { raw: vi.fn().mockResolvedValue({ rows }) };
-}
-
-function buildEmWithKnex(rows: unknown[] = []): { em: EntityManager; knex: ReturnType<typeof buildMockKnex> } {
-  const knex = buildMockKnex(rows);
-  const em = { getKnex: () => knex } as unknown as EntityManager;
-  return { em, knex };
+function buildMockEm(countValue = 0): EntityManager {
+  return {
+    count: vi.fn().mockResolvedValue(countValue),
+    getKnex: () => ({ raw: vi.fn() }),
+  } as unknown as EntityManager;
 }
 
 function mockFetchEmbedding(embedding: number[]) {
@@ -42,10 +45,14 @@ function mockFetchEmbedding(embedding: number[]) {
 
 describe('retrieveChunks', () => {
   let mockEmbedderInstance: { resolveEmbedder: ReturnType<typeof vi.fn> };
+  let mockVectorSearchInstance: { similaritySearch: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     mockEmbedderInstance = { resolveEmbedder: vi.fn().mockResolvedValue(MOCK_EMBED_CONFIG) };
     vi.mocked(EmbeddingAgentService).mockImplementation(() => mockEmbedderInstance as any);
+
+    mockVectorSearchInstance = { similaritySearch: vi.fn().mockResolvedValue([]) };
+    vi.mocked(VectorSearchRepository).mockImplementation(() => mockVectorSearchInstance as any);
   });
 
   afterEach(() => {
@@ -57,8 +64,9 @@ describe('retrieveChunks', () => {
       { id: 'chunk-1', content: 'Hello world', source_path: 'docs/hello.md', similarity_score: '0.95' },
       { id: 'chunk-2', content: 'Goodbye world', source_path: null, similarity_score: '0.80' },
     ];
+    mockVectorSearchInstance.similaritySearch.mockResolvedValue(rows);
     global.fetch = mockFetchEmbedding([0.1, 0.2, 0.3]) as any;
-    const { em } = buildEmWithKnex(rows);
+    const em = buildMockEm(2);
 
     const result = await retrieveChunks('test query', 'artifact-1', 2, 'tenant-1', undefined, em);
 
@@ -82,7 +90,7 @@ describe('retrieveChunks', () => {
 
   it('returns empty chunks array when pgvector returns no rows', async () => {
     global.fetch = mockFetchEmbedding([0.1]) as any;
-    const { em } = buildEmWithKnex([]);
+    const em = buildMockEm(0);
 
     const result = await retrieveChunks('nothing matches', 'artifact-1', 5, 'tenant-1', undefined, em);
 
@@ -93,21 +101,21 @@ describe('retrieveChunks', () => {
   it('formats pgvector query with correct vector literal [x,y,z]', async () => {
     const embedding = [0.1, 0.2, 0.3];
     global.fetch = mockFetchEmbedding(embedding) as any;
-    const { em, knex } = buildEmWithKnex([]);
+    const em = buildMockEm(0);
 
     await retrieveChunks('query', 'artifact-42', 3, 'tenant-1', undefined, em);
 
-    // calls[0] is the chunk count query, calls[1] is the vector search
-    const [, params] = (knex.raw as ReturnType<typeof vi.fn>).mock.calls[1];
-    expect(params[0]).toBe('[0.1,0.2,0.3]');  // pgvector literal
-    expect(params[1]).toBe('artifact-42');       // artifact_id
-    expect(params[2]).toBe('[0.1,0.2,0.3]');  // repeated for ORDER BY
-    expect(params[3]).toBe(3);                   // LIMIT topK
+    // VectorSearchRepository.similaritySearch should be called with correct args
+    expect(mockVectorSearchInstance.similaritySearch).toHaveBeenCalledWith(
+      'artifact-42',
+      '[0.1,0.2,0.3]',
+      3,
+    );
   });
 
   it('passes agentRef to embedder resolver', async () => {
     global.fetch = mockFetchEmbedding([0.5]) as any;
-    const { em } = buildEmWithKnex([]);
+    const em = buildMockEm(0);
 
     await retrieveChunks('q', 'artifact-1', 1, 'tenant-1', 'my-embedder', em);
 
@@ -118,7 +126,7 @@ describe('retrieveChunks', () => {
     mockEmbedderInstance.resolveEmbedder.mockRejectedValue(
       new Error('EmbeddingAgent \'missing-agent\' not found for tenant tenant-1'),
     );
-    const { em } = buildEmWithKnex([]);
+    const em = buildMockEm(0);
 
     await expect(
       retrieveChunks('q', 'artifact-1', 5, 'tenant-1', 'missing-agent', em),
@@ -131,11 +139,20 @@ describe('retrieveChunks', () => {
       status: 401,
       text: async () => 'Unauthorized',
     }) as any;
-    const { em } = buildEmWithKnex([]);
+    const em = buildMockEm(0);
 
     await expect(
       retrieveChunks('q', 'artifact-1', 5, 'tenant-1', undefined, em),
     ).rejects.toThrow('Embedding API error 401');
+  });
+
+  it('calls em.count() to check chunk count', async () => {
+    global.fetch = mockFetchEmbedding([0.1]) as any;
+    const em = buildMockEm(42);
+
+    await retrieveChunks('q', 'artifact-1', 5, 'tenant-1', undefined, em);
+
+    expect(em.count).toHaveBeenCalledWith(expect.anything(), { artifact: 'artifact-1' });
   });
 });
 

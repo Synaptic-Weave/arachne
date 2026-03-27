@@ -6,3 +6,5 @@ export { ApiKeyRepository } from './ApiKeyRepository.js';
 export { ConversationRepository } from './ConversationRepository.js';
 export { PartitionRepository } from './PartitionRepository.js';
 export { TraceRepository } from './TraceRepository.js';
+export { AnalyticsRepository } from './AnalyticsRepository.js';
+export { VectorSearchRepository } from './VectorSearchRepository.js';
