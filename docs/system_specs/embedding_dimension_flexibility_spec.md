@@ -1,6 +1,6 @@
 # Embedding Dimension Flexibility
 
-> Tracked by Epic [#TBD]
+> Tracked by [#190](https://github.com/Synaptic-Weave/arachne/issues/190)
 
 ## Status
 

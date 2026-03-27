@@ -1,6 +1,6 @@
 # Arachne Unified Authentication Specification
 
-> Tracked by Epic [#TBD]
+> Tracked by [#192](https://github.com/Synaptic-Weave/arachne/issues/192)
 
 ## Status
 

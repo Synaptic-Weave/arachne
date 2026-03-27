@@ -1,6 +1,6 @@
 # KB Chunk Content Encryption at Rest
 
-> Tracked by Issue [#TBD]
+> Tracked by [#191](https://github.com/Synaptic-Weave/arachne/issues/191)
 
 ## Status
 
