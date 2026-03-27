@@ -450,3 +450,115 @@ describe('embedTexts', () => {
     ).rejects.toThrow('Azure embedding provider requires a baseUrl');
   });
 });
+
+// ── embedTexts rate-limit batching (#183) ────────────────────────────────────
+
+describe('embedTexts — rate-limit batching', () => {
+  let service: EmbeddingAgentService;
+  let mockFetch: ReturnType<typeof vi.fn>;
+  let setTimeoutSpy: ReturnType<typeof vi.spyOn>;
+  const originalFetch = global.fetch;
+
+  function makeEmbeddingResponse(count: number) {
+    return {
+      ok: true,
+      text: async () => '',
+      json: async () => ({
+        data: Array.from({ length: count }, (_, i) => ({
+          embedding: [0.1 * (i + 1), 0.2, 0.3],
+          index: i,
+        })),
+      }),
+    };
+  }
+
+  const openaiConfig = {
+    provider: 'openai' as const,
+    model: 'text-embedding-3-small',
+    dimensions: 1536,
+    apiKey: 'sk-test',
+  };
+
+  beforeEach(() => {
+    service = new EmbeddingAgentService();
+    mockFetch = vi.fn();
+    global.fetch = mockFetch as any;
+    setTimeoutSpy = vi.spyOn(global, 'setTimeout');
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    setTimeoutSpy.mockRestore();
+    vi.clearAllMocks();
+  });
+
+  it('batches OpenAI requests at 100 texts per API call', async () => {
+    const texts = Array.from({ length: 250 }, () => 'small');
+
+    mockFetch.mockImplementation(async (_url: string, opts: any) => {
+      const body = JSON.parse(opts.body);
+      return makeEmbeddingResponse(body.input.length);
+    });
+
+    const result = await service.embedTexts(texts, openaiConfig);
+
+    expect(result.embeddings).toHaveLength(250);
+    expect(mockFetch).toHaveBeenCalledTimes(3); // 100 + 100 + 50
+  });
+
+  it('splits large inputs across rate-limit windows', async () => {
+    // 1500 texts at 1040 chars = ~260 tokens each, exceeds 260k budget
+    const texts = Array.from({ length: 1500 }, () => 'x'.repeat(1040));
+
+    mockFetch.mockImplementation(async (_url: string, opts: any) => {
+      const body = JSON.parse(opts.body);
+      return makeEmbeddingResponse(body.input.length);
+    });
+
+    setTimeoutSpy.mockImplementation(((fn: Function, ms?: number) => {
+      if (ms === 60_000) { fn(); return 0 as any; }
+      return 0 as any;
+    }) as any);
+
+    const result = await service.embedTexts(texts, openaiConfig);
+
+    expect(result.embeddings).toHaveLength(1500);
+    const longTimeouts = setTimeoutSpy.mock.calls.filter(([, ms]) => ms === 60_000);
+    expect(longTimeouts.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('logs progress for multi-batch embeddings', async () => {
+    const texts = Array.from({ length: 1500 }, () => 'x'.repeat(1040));
+    const logger = { info: vi.fn() };
+
+    mockFetch.mockImplementation(async (_url: string, opts: any) => {
+      const body = JSON.parse(opts.body);
+      return makeEmbeddingResponse(body.input.length);
+    });
+
+    setTimeoutSpy.mockImplementation(((fn: Function, ms?: number) => {
+      if (ms === 60_000) { fn(); return 0 as any; }
+      return 0 as any;
+    }) as any);
+
+    await service.embedTexts(texts, openaiConfig, logger);
+
+    expect(logger.info).toHaveBeenCalled();
+    const messages = logger.info.mock.calls.map(([msg]: [string]) => msg);
+    expect(messages.some((m: string) => m.includes('rate-batch'))).toBe(true);
+  });
+
+  it('skips delay and logging for single rate batch', async () => {
+    const texts = ['hello', 'world'];
+    const logger = { info: vi.fn() };
+
+    mockFetch.mockResolvedValue(makeEmbeddingResponse(2));
+
+    await service.embedTexts(texts, openaiConfig, logger);
+
+    const messages = logger.info.mock.calls.map(([msg]: [string]) => msg);
+    expect(messages.some((m: string) => m.includes('rate-batch'))).toBe(false);
+    const longTimeouts = setTimeoutSpy.mock.calls.filter(([, ms]) => ms === 60_000);
+    expect(longTimeouts).toHaveLength(0);
+  });
+});

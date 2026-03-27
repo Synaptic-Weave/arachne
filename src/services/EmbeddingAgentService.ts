@@ -170,9 +170,14 @@ export class EmbeddingAgentService {
 
   /**
    * Generate embeddings for an array of texts using the resolved embedding provider.
+   * Batches at 100 texts per API request and rate-limits at ~260k tokens per minute.
    * Supports OpenAI (batch via `input` array), Azure, and Ollama (one-at-a-time).
    */
-  async embedTexts(texts: string[], config: EmbeddingAgentConfig): Promise<EmbedTextsResult> {
+  async embedTexts(
+    texts: string[],
+    config: EmbeddingAgentConfig,
+    logger?: { info: (msg: string) => void },
+  ): Promise<EmbedTextsResult> {
     if (config.provider === 'ollama') {
       // Ollama does not support batch embedding; loop sequentially
       const embeddings: number[][] = [];
@@ -197,47 +202,90 @@ export class EmbeddingAgentService {
       };
     }
 
-    // OpenAI and Azure both support batch via `input` array
-    let url: string;
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    let body: object;
+    const API_BATCH_SIZE = 100;
+    const DEFAULT_TOKEN_BUDGET = 260_000;
+    const DEFAULT_RATE_WINDOW_MS = 60_000;
+    const TOKEN_BUDGET = Number.parseInt(process.env.EMBEDDING_TOKEN_BUDGET ?? '', 10) || DEFAULT_TOKEN_BUDGET;
+    const RATE_WINDOW_MS = Number.parseInt(process.env.EMBEDDING_RATE_WINDOW_MS ?? '', 10) || DEFAULT_RATE_WINDOW_MS;
 
-    if (config.provider === 'azure') {
-      const baseUrl = config.baseUrl ?? '';
-      if (!baseUrl) {
-        throw new Error('Azure embedding provider requires a baseUrl (e.g., https://<resource>.openai.azure.com)');
+    // Group texts into rate-limit windows based on estimated token count
+    const rateBatches: string[][] = [];
+    let current: string[] = [];
+    let currentTokens = 0;
+
+    for (const text of texts) {
+      const est = Math.ceil(text.length / 4);
+      if (current.length > 0 && currentTokens + est > TOKEN_BUDGET) {
+        rateBatches.push(current);
+        current = [];
+        currentTokens = 0;
       }
-      const deployment = config.deployment ?? config.model;
-      const apiVersion = config.apiVersion ?? '2024-02-01';
-      url = `${baseUrl}/openai/deployments/${deployment}/embeddings?api-version=${apiVersion}`;
-      headers['api-key'] = config.apiKey ?? '';
-      body = { input: texts };
-    } else {
-      // OpenAI or OpenAI-compatible
-      const baseUrl = config.baseUrl ?? 'https://api.openai.com';
-      url = `${baseUrl}/v1/embeddings`;
-      headers['Authorization'] = `Bearer ${config.apiKey ?? ''}`;
-      body = { model: config.model, input: texts };
+      current.push(text);
+      currentTokens += est;
     }
+    if (current.length > 0) rateBatches.push(current);
 
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-    });
+    const allEmbeddings: number[][] = [];
 
-    if (!resp.ok) {
-      const errBody = await resp.text().catch(() => '');
-      throw new Error(`Embedding API error ${resp.status}: ${errBody}`);
+    for (let rb = 0; rb < rateBatches.length; rb++) {
+      if (rb > 0) {
+        if (rateBatches.length > 1) {
+          logger?.info(`Embedding rate-limit pause: waiting ${RATE_WINDOW_MS / 1000}s before batch ${rb + 1}/${rateBatches.length}`);
+        }
+        await new Promise((r) => setTimeout(r, RATE_WINDOW_MS));
+      }
+      if (rateBatches.length > 1) {
+        logger?.info(`Embedding rate-batch ${rb + 1}/${rateBatches.length} (${rateBatches[rb].length} chunks)`);
+      }
+
+      const rateBatch = rateBatches[rb];
+
+      for (let i = 0; i < rateBatch.length; i += API_BATCH_SIZE) {
+        const batch = rateBatch.slice(i, i + API_BATCH_SIZE);
+
+        let url: string;
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        let body: object;
+
+        if (config.provider === 'azure') {
+          const baseUrl = config.baseUrl ?? '';
+          if (!baseUrl) {
+            throw new Error('Azure embedding provider requires a baseUrl (e.g., https://<resource>.openai.azure.com)');
+          }
+          const deployment = config.deployment ?? config.model;
+          const apiVersion = config.apiVersion ?? '2024-02-01';
+          url = `${baseUrl}/openai/deployments/${deployment}/embeddings?api-version=${apiVersion}`;
+          headers['api-key'] = config.apiKey ?? '';
+          body = { input: batch };
+        } else {
+          // OpenAI or OpenAI-compatible
+          const baseUrl = config.baseUrl ?? 'https://api.openai.com';
+          url = `${baseUrl}/v1/embeddings`;
+          headers['Authorization'] = `Bearer ${config.apiKey ?? ''}`;
+          body = { model: config.model, input: batch };
+        }
+
+        const resp = await fetch(url, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(body),
+        });
+
+        if (!resp.ok) {
+          const errBody = await resp.text().catch(() => '');
+          throw new Error(`Embedding API error ${resp.status}: ${errBody}`);
+        }
+
+        const data = (await resp.json()) as any;
+        // OpenAI/Azure return { data: [{ embedding: [...], index: N }, ...] }
+        const sorted = (data.data as Array<{ embedding: number[]; index: number }>)
+          .sort((a, b) => a.index - b.index);
+        allEmbeddings.push(...sorted.map((d) => d.embedding));
+      }
     }
-
-    const data = (await resp.json()) as any;
-    // OpenAI/Azure return { data: [{ embedding: [...], index: N }, ...] }
-    const sorted = (data.data as Array<{ embedding: number[]; index: number }>)
-      .sort((a, b) => a.index - b.index);
 
     return {
-      embeddings: sorted.map((d) => d.embedding),
+      embeddings: allEmbeddings,
       model: config.model,
       dimensions: config.dimensions,
     };

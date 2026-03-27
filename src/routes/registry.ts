@@ -334,7 +334,7 @@ export function registerRegistryRoutes(fastify: FastifyInstance): void {
       // Resolve the embedding provider (provider field is currently only "system-embedder" or undefined)
       const agentRef = (provider && provider !== 'system-embedder') ? provider : undefined;
       const config = await embeddingService.resolveEmbedder(agentRef, registryUser.tenantId, em);
-      const result = await embeddingService.embedTexts(cleaned, config);
+      const result = await embeddingService.embedTexts(cleaned, config, request.log);
 
       return reply.send({
         embeddings: result.embeddings,

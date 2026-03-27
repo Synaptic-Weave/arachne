@@ -23,7 +23,7 @@ import type { CreateProviderDto, UpdateProviderDto } from '../application/dtos/p
 export function registerPortalRoutes(
   fastify: FastifyInstance,
 ): void {
-  fastify.register(multipart, { limits: { fileSize: 50 * 1024 * 1024 } });
+  fastify.register(multipart, { limits: { fileSize: 200 * 1024 * 1024 } });
 
   const PORTAL_BASE_URL = process.env.PORTAL_BASE_URL ?? 'http://localhost:3000';
 
@@ -1596,7 +1596,7 @@ export function registerPortalRoutes(
     const texts = rawChunks.map((c) => c.content);
     let embeddings: number[][];
     try {
-      embeddings = await weaveService.embedTexts(texts, embedderConfig);
+      embeddings = await weaveService.embedTexts(texts, embedderConfig, request.log);
     } catch (err: any) {
       return reply.code(500).send({ error: `Embedding generation failed: ${err.message}` });
     }

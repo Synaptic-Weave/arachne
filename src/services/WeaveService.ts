@@ -275,81 +275,148 @@ export class WeaveService {
 
   /**
    * Generate embeddings via the configured provider API.
-   * Batches internally at 100 texts per request.
+   * Batches internally at 100 texts per API request and rate-limits at ~260k
+   * tokens per minute to stay under provider TPM quotas.
    * Accepts either full EmbeddingAgentConfig or legacy (provider, model, apiKey) args.
    */
   async embedTexts(
     texts: string[],
-    providerOrConfig: string | EmbeddingAgentConfig,
-    model?: string,
+    config: EmbeddingAgentConfig,
+    logger?: { info: (msg: string) => void },
+  ): Promise<number[][]>;
+  async embedTexts(
+    texts: string[],
+    provider: string,
+    model: string,
     apiKey?: string,
+    logger?: { info: (msg: string) => void },
+  ): Promise<number[][]>;
+  async embedTexts(
+    texts: string[],
+    providerOrConfig: string | EmbeddingAgentConfig,
+    modelOrLogger?: string | { info: (msg: string) => void },
+    apiKey?: string,
+    logger?: { info: (msg: string) => void },
   ): Promise<number[][]> {
+    // Resolve overloaded parameters
+    let effectiveLogger = logger;
+    let effectiveModel: string | undefined;
+    if (typeof modelOrLogger === 'object' && modelOrLogger !== null) {
+      effectiveLogger = modelOrLogger;
+    } else {
+      effectiveModel = modelOrLogger;
+    }
+
     // Normalize to config object
     const config: EmbeddingAgentConfig = typeof providerOrConfig === 'string'
-      ? { provider: providerOrConfig, model: model!, dimensions: 0, apiKey }
+      ? { provider: providerOrConfig, model: effectiveModel!, dimensions: 0, apiKey }
       : providerOrConfig;
 
-    const BATCH_SIZE = 100;
+    const API_BATCH_SIZE = 100;
+    const DEFAULT_TOKEN_BUDGET = 260_000;
+    const DEFAULT_RATE_WINDOW_MS = 60_000;
+    const TOKEN_BUDGET = Number.parseInt(process.env.EMBEDDING_TOKEN_BUDGET ?? '', 10) || DEFAULT_TOKEN_BUDGET;
+    const RATE_WINDOW_MS = Number.parseInt(process.env.EMBEDDING_RATE_WINDOW_MS ?? '', 10) || DEFAULT_RATE_WINDOW_MS;
+
+    // Group texts into rate-limit windows based on estimated token count.
+    // Ollama is local and has no TPM quota, so skip rate-window splitting.
+    const rateBatches: string[][] = [];
+    if (config.provider === 'ollama') {
+      rateBatches.push(texts);
+    } else {
+      let current: string[] = [];
+      let currentTokens = 0;
+
+      for (const text of texts) {
+        const est = Math.ceil(text.length / 4);
+        if (current.length > 0 && currentTokens + est > TOKEN_BUDGET) {
+          rateBatches.push(current);
+          current = [];
+          currentTokens = 0;
+        }
+        current.push(text);
+        currentTokens += est;
+      }
+      if (current.length > 0) rateBatches.push(current);
+    }
+
     const allEmbeddings: number[][] = [];
 
-    for (let i = 0; i < texts.length; i += BATCH_SIZE) {
-      const batch = texts.slice(i, i + BATCH_SIZE);
-
-      let url: string;
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      let body: object;
-
-      if (config.provider === 'azure') {
-        const baseUrl = config.baseUrl ?? '';
-        const deployment = config.deployment ?? config.model;
-        const apiVersion = config.apiVersion ?? '2024-02-01';
-        url = `${baseUrl}/openai/deployments/${deployment}/embeddings?api-version=${apiVersion}`;
-        headers['api-key'] = config.apiKey ?? '';
-        body = { input: batch };
-      } else if (config.provider === 'ollama') {
-        const baseUrl = config.baseUrl ?? 'http://localhost:11434';
-        url = `${baseUrl}/api/embeddings`;
-        // Ollama /api/embeddings takes a single prompt; batch one at a time
-        for (const text of batch) {
-          const resp = await fetch(url, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({ model: config.model, prompt: text }),
-          });
-          if (!resp.ok) {
-            const errBody = await resp.text();
-            throw new Error(`Ollama embeddings API error ${resp.status}: ${errBody}`);
-          }
-          const json = (await resp.json()) as { embedding: number[] };
-          allEmbeddings.push(json.embedding);
+    for (let rb = 0; rb < rateBatches.length; rb++) {
+      if (rb > 0) {
+        if (rateBatches.length > 1) {
+          effectiveLogger?.info(`Embedding rate-limit pause: waiting ${RATE_WINDOW_MS / 1000}s before batch ${rb + 1}/${rateBatches.length}`);
         }
-        continue; // Skip the common fetch below — already handled per-text
-      } else {
-        // OpenAI or OpenAI-compatible
-        const baseUrl = config.baseUrl ?? 'https://api.openai.com';
-        url = `${baseUrl}/v1/embeddings`;
-        headers['Authorization'] = `Bearer ${config.apiKey ?? ''}`;
-        body = { model: config.model, input: batch };
+        await new Promise((r) => setTimeout(r, RATE_WINDOW_MS));
+      }
+      if (rateBatches.length > 1) {
+        effectiveLogger?.info(`Embedding rate-batch ${rb + 1}/${rateBatches.length} (${rateBatches[rb].length} chunks)`);
       }
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body),
-      });
+      const rateBatch = rateBatches[rb];
 
-      if (!response.ok) {
-        const errBody = await response.text();
-        throw new Error(`Embeddings API error ${response.status}: ${errBody}`);
+      for (let i = 0; i < rateBatch.length; i += API_BATCH_SIZE) {
+        const batch = rateBatch.slice(i, i + API_BATCH_SIZE);
+
+        let url: string;
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        let body: object;
+
+        if (config.provider === 'azure') {
+          const baseUrl = config.baseUrl ?? '';
+          if (!baseUrl) {
+            throw new Error('Azure embedding provider requires a baseUrl (e.g., https://<resource>.openai.azure.com)');
+          }
+          const deployment = config.deployment ?? config.model;
+          const apiVersion = config.apiVersion ?? '2024-02-01';
+          url = `${baseUrl}/openai/deployments/${deployment}/embeddings?api-version=${apiVersion}`;
+          headers['api-key'] = config.apiKey ?? '';
+          body = { input: batch };
+        } else if (config.provider === 'ollama') {
+          const baseUrl = config.baseUrl ?? 'http://localhost:11434';
+          url = `${baseUrl}/api/embeddings`;
+          // Ollama /api/embeddings takes a single prompt; batch one at a time
+          for (const text of batch) {
+            const resp = await fetch(url, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({ model: config.model, prompt: text }),
+            });
+            if (!resp.ok) {
+              const errBody = await resp.text();
+              throw new Error(`Ollama embeddings API error ${resp.status}: ${errBody}`);
+            }
+            const json = (await resp.json()) as { embedding: number[] };
+            allEmbeddings.push(json.embedding);
+          }
+          continue; // Skip the common fetch below — already handled per-text
+        } else {
+          // OpenAI or OpenAI-compatible
+          const baseUrl = config.baseUrl ?? 'https://api.openai.com';
+          url = `${baseUrl}/v1/embeddings`;
+          headers['Authorization'] = `Bearer ${config.apiKey ?? ''}`;
+          body = { model: config.model, input: batch };
+        }
+
+        const response = await fetch(url, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(body),
+        });
+
+        if (!response.ok) {
+          const errBody = await response.text();
+          throw new Error(`Embeddings API error ${response.status}: ${errBody}`);
+        }
+
+        const json = (await response.json()) as {
+          data: Array<{ embedding: number[]; index: number }>;
+        };
+
+        // Sort by index to preserve order
+        const sorted = json.data.slice().sort((a, b) => a.index - b.index);
+        allEmbeddings.push(...sorted.map((d) => d.embedding));
       }
-
-      const json = (await response.json()) as {
-        data: Array<{ embedding: number[]; index: number }>;
-      };
-
-      // Sort by index to preserve order
-      const sorted = json.data.slice().sort((a, b) => a.index - b.index);
-      allEmbeddings.push(...sorted.map((d) => d.embedding));
     }
 
     return allEmbeddings;
