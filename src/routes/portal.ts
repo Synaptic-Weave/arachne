@@ -1507,10 +1507,10 @@ export function registerPortalRoutes(
       if (!artifact) return reply.code(404).send({ error: 'Knowledge base not found' });
       // Check for deployments referencing this artifact
       const { Deployment } = await import('../domain/entities/Deployment.js');
-      const deployments = await em.find(Deployment, { artifact: artifact.id });
+      const deployments = await em.find(Deployment, { artifact: artifact.id, tenant: tenantId });
       if (deployments.length > 0) {
         return reply.code(409).send({
-          error: `Cannot delete knowledge base: it has ${deployments.length} active deployment(s). Remove them first.`,
+          error: `Cannot delete knowledge base: it has ${deployments.length} deployment(s). Remove them first.`,
           deployments: deployments.map((d) => ({
             id: d.id,
             name: d.name,
