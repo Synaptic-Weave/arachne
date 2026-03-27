@@ -108,7 +108,7 @@ npx vitest run tests/auth.test.ts
 npx vitest run -t "should resolve tenant context"
 ```
 
-### Database Migrations
+### Database Migrations (MikroORM)
 ```bash
 # Run pending migrations
 npm run migrate:up
@@ -116,8 +116,20 @@ npm run migrate:up
 # Rollback last migration
 npm run migrate:down
 
-# Create new migration
-npm run migrate:create <name>
+# Create new migration (auto-diffs entity schemas)
+npm run migrate:create
+
+# Check if schema is in sync with entities
+npm run migrate:check
+
+# List pending migrations
+npm run migrate:pending
+```
+
+### Legacy Migrations (node-pg-migrate, for rollback only)
+```bash
+npm run legacy:migrate:up
+npm run legacy:migrate:down
 ```
 
 ### Frontend Development
@@ -349,11 +361,13 @@ When adding a new provider:
 4. Handle provider-specific auth headers and error formats
 
 ### Migration Strategy
-Migrations are CommonJS (`.cjs`) using `node-pg-migrate`:
-- Create new migration: `npm run migrate:create descriptive-name`
-- Always provide both `up` and `down` functions
-- Test rollback (`migrate:down`) before committing
-- Use parameterized queries (`$1`, `$2`) for SQL injection safety
+New migrations use **MikroORM's migrator** (TypeScript files in `src/migrations/`):
+- Create new migration: `npm run migrate:create` (auto-diffs entity schemas against snapshot)
+- Review generated SQL before applying
+- Apply with `npm run migrate:up`, roll back with `npm run migrate:down`
+- The migrator uses a separate `mikro_orm_migrations` table for its history
+- Legacy `node-pg-migrate` migrations (CommonJS `.cjs` in `migrations/`) are kept for rollback only
+- See `docs/developer-guide.md` for the full migration workflow
 
 ### Frontend Serving
 Both Portal and Dashboard are served as static SPAs by Fastify:

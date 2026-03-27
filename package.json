@@ -7,10 +7,17 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "tsx scripts/backfill-sandbox-keys.ts && node dist/index.js",
-    "migrate": "node-pg-migrate",
-    "migrate:up": "node-pg-migrate up",
-    "migrate:down": "node-pg-migrate down",
-    "migrate:create": "node-pg-migrate create",
+    "migrate": "mikro-orm-esm migration:up",
+    "migrate:up": "mikro-orm-esm migration:up",
+    "migrate:down": "mikro-orm-esm migration:down",
+    "migrate:create": "mikro-orm-esm migration:create",
+    "migrate:check": "mikro-orm-esm migration:check",
+    "migrate:pending": "mikro-orm-esm migration:pending",
+    "migrate:fresh": "mikro-orm-esm migration:fresh",
+    "legacy:migrate": "node-pg-migrate",
+    "legacy:migrate:up": "node-pg-migrate up",
+    "legacy:migrate:down": "node-pg-migrate down",
+    "legacy:migrate:create": "node-pg-migrate create",
     "test": "vitest run --project arachne --project loom-portal",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
@@ -38,6 +45,7 @@
   "author": "Michael Brown",
   "license": "MIT",
   "devDependencies": {
+    "@mikro-orm/cli": "^6.6.7",
     "@changesets/changelog-github": "^0.6.0",
     "@changesets/cli": "^2.30.0",
     "@testing-library/jest-dom": "^6.9.1",
@@ -76,5 +84,11 @@
     "cli",
     "packages/chat",
     "site"
-  ]
+  ],
+  "mikro-orm": {
+    "useTsNode": true,
+    "configPaths": [
+      "./mikro-orm.config.ts"
+    ]
+  }
 }

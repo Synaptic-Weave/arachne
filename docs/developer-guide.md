@@ -231,6 +231,93 @@ Arachne proxies OpenAI's `/v1/chat/completions` endpoint with the following exte
 **Frontend:**
 - Vite + React (Portal and Dashboard SPAs)
 
+## Database Migrations
+
+Arachne uses **MikroORM's migrator** for all new schema changes. The legacy
+`node-pg-migrate` tool is retained as a fallback for rolling back historical
+migrations (001 through 027).
+
+### Quick Reference
+
+```bash
+# Apply all pending migrations
+npm run migrate:up
+
+# Roll back the last MikroORM migration
+npm run migrate:down
+
+# Create a new migration (auto-diffs entity schemas)
+npm run migrate:create
+
+# Check if schema is in sync with entities
+npm run migrate:check
+
+# List pending (unapplied) migrations
+npm run migrate:pending
+```
+
+### How It Works
+
+1. MikroORM compares your `EntitySchema` definitions (in `src/domain/schemas/`)
+   against a snapshot file and generates a TypeScript migration in `src/migrations/`.
+2. The migrator stores its history in the `mikro_orm_migrations` table (separate
+   from the legacy `pgmigrations` table used by node-pg-migrate).
+3. A baseline migration (`Migration00000000000000_baseline`) marks the boundary:
+   everything before it was created by node-pg-migrate; everything after uses
+   MikroORM migrations.
+
+### Creating a New Migration
+
+```bash
+# 1. Edit or add EntitySchema files in src/domain/schemas/
+# 2. Auto-generate the migration:
+npm run migrate:create
+
+# 3. Review the generated file in src/migrations/
+# 4. Apply it:
+npm run migrate:up
+```
+
+The generated migration will contain the SQL diff between the current snapshot
+and your updated entity schemas. Always review the generated SQL before applying.
+
+### Setting Up a Fresh Database
+
+For a brand-new database, run the legacy migrations first to create the base
+schema, then apply MikroORM migrations for any changes after the baseline:
+
+```bash
+npm run legacy:migrate:up   # Apply node-pg-migrate migrations 001-027
+npm run migrate:up           # Apply MikroORM migrations (baseline + newer)
+```
+
+### Legacy Fallback (node-pg-migrate)
+
+The original 27 migrations remain in the `migrations/` directory. Legacy
+commands are available under the `legacy:` prefix:
+
+```bash
+npm run legacy:migrate:up      # Run pending legacy migrations
+npm run legacy:migrate:down    # Roll back last legacy migration
+npm run legacy:migrate:create  # Create a new legacy migration (not recommended)
+```
+
+Use these only for rolling back pre-baseline schema changes.
+
+### Configuration
+
+The migrator is configured in `src/orm.ts` (via `buildOrmConfig()`) and exposed
+to the CLI through `mikro-orm.config.ts` at the project root. Key settings:
+
+| Setting | Value | Purpose |
+|---------|-------|---------|
+| `migrations.path` | `./src/migrations` | Where migration files live |
+| `migrations.tableName` | `mikro_orm_migrations` | History table (separate from legacy) |
+| `migrations.snapshot` | `true` | Enables schema diffing for auto-generated migrations |
+| `migrations.emit` | `ts` | Generates TypeScript migration files |
+| `migrations.transactional` | `true` | Each migration runs in a transaction |
+| `migrations.allOrNothing` | `true` | Batch execution rolls back on any failure |
+
 ## Database Schema
 
 ### Core Tables
