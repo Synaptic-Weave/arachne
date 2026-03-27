@@ -281,8 +281,8 @@ export class PortalService {
   }
 
   /**
-   * Load the tenant inheritance chain using recursive CTE.
-   * Uses Knex raw query with ? placeholders (single parameter, no reuse issue).
+   * Load the tenant inheritance chain by walking parent_id links iteratively.
+   * Returns the chain from the given tenant up to the root, ordered by depth ascending.
    */
   private async loadTenantChain(tenantId: string): Promise<Array<{
     id: string; name: string;
@@ -292,21 +292,39 @@ export class PortalService {
     mcp_endpoints: unknown[] | null;
     depth: number;
   }>> {
-    const knex = (this.em as any).getKnex();
-    const result = await knex.raw(
-      `WITH RECURSIVE tenant_chain AS (
-         SELECT id, name, parent_id, provider_config, system_prompt, skills, mcp_endpoints, 0 AS depth
-         FROM tenants WHERE id = ?
-         UNION ALL
-         SELECT t.id, t.name, t.parent_id, t.provider_config, t.system_prompt, t.skills, t.mcp_endpoints, tc.depth + 1
-         FROM tenants t
-         JOIN tenant_chain tc ON t.id = tc.parent_id
-       )
-       SELECT id, name, provider_config, system_prompt, skills, mcp_endpoints, depth
-       FROM tenant_chain ORDER BY depth ASC`,
-      [tenantId],
-    );
-    return result.rows;
+    const chain: Array<{
+      id: string; name: string;
+      provider_config: Record<string, unknown> | null;
+      system_prompt: string | null;
+      skills: unknown[] | null;
+      mcp_endpoints: unknown[] | null;
+      depth: number;
+    }> = [];
+
+    let currentId: string | null = tenantId;
+    let depth = 0;
+    const visited = new Set<string>();
+
+    while (currentId && !visited.has(currentId)) {
+      visited.add(currentId);
+      const tenant = await this.em.findOne(Tenant, { id: currentId });
+      if (!tenant) break;
+
+      chain.push({
+        id: tenant.id,
+        name: tenant.name,
+        provider_config: tenant.providerConfig as Record<string, unknown> | null,
+        system_prompt: (tenant as any).systemPrompt ?? null,
+        skills: (tenant as any).skills ?? null,
+        mcp_endpoints: (tenant as any).mcpEndpoints ?? null,
+        depth,
+      });
+
+      currentId = tenant.parentId ?? null;
+      depth++;
+    }
+
+    return chain;
   }
 
   // ── Partitions ────────────────────────────────────────────────────────────

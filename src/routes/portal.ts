@@ -1433,16 +1433,17 @@ export function registerPortalRoutes(
       const artifact = await em.findOne(Artifact, { id, tenant: tenantId, kind: 'KnowledgeBase' });
       if (!artifact) return reply.code(404).send({ error: 'Knowledge base not found' });
 
-      const knex = (em as any).getKnex();
-      const result = await knex.raw(
-        `SELECT source_path, COUNT(*) as chunk_count, SUM(token_count) as total_tokens
-         FROM kb_chunks WHERE artifact_id = ?
-         GROUP BY source_path ORDER BY source_path`,
-        [id],
-      );
+      const { KbChunk } = await import('../domain/entities/KbChunk.js');
+      const qb = em.createQueryBuilder(KbChunk, 'c');
+      const rows = await qb
+        .select(['c.source_path as source_path', 'count(*) as chunk_count', 'sum(c.token_count) as total_tokens'])
+        .where({ artifact: id })
+        .groupBy('c.source_path')
+        .orderBy({ 'c.source_path': 'ASC' })
+        .execute<Array<{ source_path: string | null; chunk_count: string; total_tokens: string | null }>>();
 
       return reply.send({
-        sources: (result.rows as any[]).map(r => ({
+        sources: rows.map(r => ({
           sourcePath: r.source_path,
           chunkCount: parseInt(r.chunk_count, 10),
           totalTokens: r.total_tokens ? parseInt(r.total_tokens, 10) : null,
